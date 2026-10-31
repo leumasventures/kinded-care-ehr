@@ -12,6 +12,7 @@ import {
   Settings,
   ShieldCheck,
   Tag,
+  Landmark,
   FileText,
   X,
   type LucideIcon,
@@ -23,7 +24,9 @@ export interface NavItem {
   label: string;
   path: string;
   icon: LucideIcon;
+  /** Shown only if the user can view this module. */
   module?: Module;
+  /** Shown only to administrators. */
   adminOnly?: boolean;
 }
 
@@ -37,6 +40,7 @@ export const navItems: NavItem[] = [
   { label: "Nursing", path: "/nursing", icon: HeartPulse, module: "Nursing" },
   { label: "Admissions", path: "/admissions", icon: BedDouble, module: "Admissions" },
   { label: "Billing", path: "/billing", icon: Receipt, module: "Billing" },
+  { label: "Accounts", path: "/accounts", icon: Landmark, module: "Accounts" },
   { label: "Price List", path: "/price-list", icon: Tag, module: "Billing" },
   { label: "Reports", path: "/reports", icon: FileText, module: "Reports" },
   { label: "Admin", path: "/admin", icon: ShieldCheck, adminOnly: true },
@@ -59,6 +63,7 @@ export default function Sidebar({ open, onClose }: SidebarProps) {
 
   return (
     <>
+      {/* Mobile backdrop */}
       <div
         onClick={onClose}
         aria-hidden="true"

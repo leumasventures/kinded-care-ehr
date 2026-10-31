@@ -6,6 +6,7 @@ import {
   FileText,
   Info,
   KeyRound,
+  ScrollText,
   ShieldCheck,
   Tag,
   UserPlus,
@@ -14,7 +15,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { ACTIONS, MODULES, seedRoles, seedUsers, type Action } from "../types/access";
+import { ACTIONS, MODULES, loadRoles, loadUsers, type Action } from "../types/access";
 
 const ADMIN_ROLE_ID = "r-admin";
 const STALE_DAYS = 30;
@@ -52,21 +53,24 @@ const daysSince = (stamp: string) => {
 const quickLinks: { to: string; label: string; hint: string; icon: LucideIcon }[] = [
   { to: "/admin/users", label: "Users", hint: "Add, edit, reset passwords, deactivate", icon: UsersIcon },
   { to: "/admin/roles", label: "Roles & permissions", hint: "Create roles and set access", icon: ShieldCheck },
+  { to: "/admin/audit", label: "Audit log", hint: "Who did what, and when", icon: ScrollText },
   { to: "/price-list", label: "Price list", hint: "Services, drugs and care charges", icon: Tag },
   { to: "/reports", label: "Reports", hint: "Financial and clinical summaries", icon: FileText },
 ];
 
 export default function Admin() {
   const { user: me } = useAuth();
+  const allUsers = loadUsers();
+  const allRoles = loadRoles();
 
-  const total = seedUsers.length;
-  const active = seedUsers.filter((u) => u.active);
+  const total = allUsers.length;
+  const active = allUsers.filter((u) => u.active);
   const inactive = total - active.length;
   const activeAdmins = active.filter((u) => u.roleId === ADMIN_ROLE_ID).length;
 
-  const usersPerRole = seedRoles.map((r) => ({
+  const usersPerRole = allRoles.map((r) => ({
     role: r,
-    count: seedUsers.filter((u) => u.roleId === r.id).length,
+    count: allUsers.filter((u) => u.roleId === r.id).length,
   }));
   const maxCount = Math.max(1, ...usersPerRole.map((r) => r.count));
 
@@ -77,11 +81,11 @@ export default function Admin() {
   if (inactive > 0)
     attention.push({ tone: "info", text: `${inactive} deactivated account${inactive > 1 ? "s" : ""} — delete if no longer needed.` });
 
-  const stale = seedUsers.filter((u) => u.active && (daysSince(u.lastLogin) ?? 0) > STALE_DAYS);
+  const stale = allUsers.filter((u) => u.active && (daysSince(u.lastLogin) ?? 0) > STALE_DAYS);
   if (stale.length > 0)
     attention.push({ tone: "warn", text: `No login in ${STALE_DAYS}+ days: ${stale.map((u) => u.name).join(", ")}.` });
 
-  const neverLoggedIn = seedUsers.filter((u) => u.active && daysSince(u.lastLogin) === null);
+  const neverLoggedIn = allUsers.filter((u) => u.active && daysSince(u.lastLogin) === null);
   if (neverLoggedIn.length > 0)
     attention.push({ tone: "info", text: `Never logged in: ${neverLoggedIn.map((u) => u.name).join(", ")}.` });
 
@@ -93,7 +97,7 @@ export default function Admin() {
     { label: "Total users", value: total, icon: UsersIcon, color: "bg-blue-50 text-blue-600" },
     { label: "Active", value: active.length, icon: CheckCircle2, color: "bg-emerald-50 text-emerald-600" },
     { label: "Inactive", value: inactive, icon: UserX, color: "bg-rose-50 text-rose-600" },
-    { label: "Roles", value: seedRoles.length, icon: ShieldCheck, color: "bg-amber-50 text-amber-600" },
+    { label: "Roles", value: allRoles.length, icon: ShieldCheck, color: "bg-amber-50 text-amber-600" },
   ];
 
   return (
@@ -178,7 +182,7 @@ export default function Admin() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {seedRoles.map((r) => (
+              {allRoles.map((r) => (
                 <tr key={r.id}>
                   <td className="px-5 py-3 font-medium text-slate-800">{r.name}</td>
                   {MODULES.map((m) => {

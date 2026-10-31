@@ -1,14 +1,83 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ChevronDown, ChevronUp, Copy, Download, Eye, KeyRound, Pencil, Plus, Power, Search, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { logAudit } from "../services/audit";
 import Modal from "../components/billing/Modal";
 import { todayISO } from "../types/billing";
-import { ACTIONS, MODULES, seedRoles, seedUsers, type User } from "../types/access";
+import {
+  ACTIONS,
+  MODULES,
+  effectivePermissions,
+  hashPassword,
+  loadRoles,
+  loadUsers,
+  saveUsers,
+  type Action,
+  type Module,
+  type Permissions,
+  type Role,
+  type User,
+} from "../types/access";
+import { loadSettings } from "../types/settings";
 
-interface ManagedUser extends User {
-  phone?: string;
-  createdAt: string;
-  mustChangePassword: boolean;
+type ManagedUser = User;
+
+interface UserFormData {
+  name: string;
+  email: string;
+  phone: string;
+  roleId: string;
+  permissions?: Permissions; // set only when privileges are customised for this user
+  password?: string;
+}
+
+const clone = (p: Permissions): Permissions => JSON.parse(JSON.stringify(p));
+const countGranted = (p: Permissions) => MODULES.reduce((n, m) => n + ACTIONS.filter((a) => p[m][a]).length, 0);
+const TOTAL_PERMS = MODULES.length * ACTIONS.length;
+
+/** Privilege grid. "view" is the base permission: ticking anything else ticks view, unticking view clears the row. */
+function PermissionMatrix({ value, onChange }: { value: Permissions; onChange: (p: Permissions) => void }) {
+  const toggle = (m: Module, a: Action) => {
+    const next = clone(value);
+    const on = !value[m][a];
+    next[m][a] = on;
+    if (a === "view" && !on) ACTIONS.forEach((x) => (next[m][x] = false));
+    if (a !== "view" && on) next[m].view = true;
+    onChange(next);
+  };
+  const toggleRow = (m: Module) => {
+    const all = ACTIONS.every((a) => value[m][a]);
+    onChange({ ...value, [m]: { view: !all, create: !all, edit: !all, delete: !all } });
+  };
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-slate-200">
+      <table className="w-full text-left text-sm">
+        <thead className="bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-4 py-2">Module</th>
+            {ACTIONS.map((a) => (
+              <th key={a} className="px-4 py-2 text-center">{a}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-100">
+          {MODULES.map((m) => (
+            <tr key={m}>
+              <td className="px-4 py-1.5">
+                <button type="button" onClick={() => toggleRow(m)} title="Toggle all actions for this module" className="font-medium text-slate-700 hover:text-blue-600">{m}</button>
+              </td>
+              {ACTIONS.map((a) => (
+                <td key={a} className="px-4 py-1.5 text-center">
+                  <input type="checkbox" checked={value[m][a]} onChange={() => toggle(m, a)} aria-label={`${a} ${m}`} className="h-4 w-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
 }
 
 const ADMIN_ROLE_ID = "r-admin";
@@ -69,8 +138,10 @@ function CredentialsModal({ title, user, password, onClose }: { title: string; u
   );
 }
 
-function UserDetail({ user, onClose }: { user: ManagedUser; onClose: () => void }) {
-  const role = seedRoles.find((r) => r.id === user.roleId);
+function UserDetail({ user, roles, onClose }: { user: ManagedUser; roles: Role[]; onClose: () => void }) {
+  const role = roles.find((r) => r.id === user.roleId);
+  const perms = role ? effectivePermissions(user, roles) : null;
+  const custom = !!user.permissions && user.roleId !== ADMIN_ROLE_ID;
   return (
     <Modal title={user.name} onClose={onClose} wide>
       <div className="space-y-5 text-sm">
@@ -84,8 +155,11 @@ function UserDetail({ user, onClose }: { user: ManagedUser; onClose: () => void 
         </dl>
 
         <section className="rounded-lg border border-slate-200">
-          <h3 className="border-b border-slate-200 px-4 py-2 font-semibold text-slate-700">What this user can do</h3>
-          {role ? (
+          <h3 className="flex items-center justify-between border-b border-slate-200 px-4 py-2 font-semibold text-slate-700">
+            What this user can do
+            <span className="text-xs font-normal text-slate-500">{custom ? "Custom privileges set for this user" : `Inherited from the ${role?.name ?? "—"} role`}</span>
+          </h3>
+          {perms ? (
             <table className="w-full text-left">
               <thead className="bg-slate-50 text-xs uppercase text-slate-500">
                 <tr>
@@ -100,8 +174,8 @@ function UserDetail({ user, onClose }: { user: ManagedUser; onClose: () => void 
                   <tr key={m}>
                     <td className="px-4 py-1.5 text-slate-700">{m}</td>
                     {ACTIONS.map((a) => (
-                      <td key={a} className={`px-4 py-1.5 text-center ${role.permissions[m][a] ? "text-emerald-600" : "text-slate-300"}`}>
-                        {role.permissions[m][a] ? "✓" : "–"}
+                      <td key={a} className={`px-4 py-1.5 text-center ${perms[m][a] ? "text-emerald-600" : "text-slate-300"}`}>
+                        {perms[m][a] ? "✓" : "–"}
                       </td>
                     ))}
                   </tr>
@@ -121,6 +195,7 @@ function UserDetail({ user, onClose }: { user: ManagedUser; onClose: () => void 
 function UserForm({
   user,
   users,
+  roles,
   isSelf,
   lockedAdmin,
   onSave,
@@ -128,53 +203,83 @@ function UserForm({
 }: {
   user: ManagedUser | null; // null = new
   users: ManagedUser[];
+  roles: Role[];
   isSelf: boolean;
   lockedAdmin: boolean;
-  onSave: (data: { name: string; email: string; phone: string; roleId: string; password?: string }) => string | null;
+  onSave: (data: UserFormData) => Promise<string | null>;
   onClose: () => void;
 }) {
+  const minPassword = loadSettings().minPasswordLength;
   const [name, setName] = useState(user?.name ?? "");
   const [email, setEmail] = useState(user?.email ?? "");
   const [phone, setPhone] = useState(user?.phone ?? "");
-  const [roleId, setRoleId] = useState(user?.roleId ?? seedRoles[seedRoles.length - 1].id);
+  const [roleId, setRoleId] = useState(user?.roleId ?? (roles.find((r) => r.id !== ADMIN_ROLE_ID) ?? roles[0]).id);
+  const [custom, setCustom] = useState(!!user?.permissions);
+  const roleDefaults = (id: string) => clone(roles.find((r) => r.id === id)?.permissions ?? roles[0].permissions);
+  const [perms, setPerms] = useState<Permissions>(() => user?.permissions ?? roleDefaults(user?.roleId ?? roleId));
   const [password, setPassword] = useState(() => (user ? "" : generatePassword()));
   const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const roleLocked = isSelf || lockedAdmin;
+  const isAdminRole = roleId === ADMIN_ROLE_ID;
+  const selectedRole = roles.find((r) => r.id === roleId);
 
-  const submit = (e: FormEvent) => {
+  const changeRole = (id: string) => {
+    setRoleId(id);
+    // A customised grid starts from the role you pick, so nothing is silently lost when switching.
+    if (!custom) setPerms(roleDefaults(id));
+  };
+
+  const setCustomMode = (on: boolean) => {
+    setCustom(on);
+    if (on && !user?.permissions) setPerms(roleDefaults(roleId));
+  };
+
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     const cleanEmail = email.trim().toLowerCase();
     if (!name.trim()) return setError("Full name is required.");
     if (!isEmail(cleanEmail)) return setError("Enter a valid email address.");
     if (users.some((u) => u.id !== user?.id && u.email.toLowerCase() === cleanEmail)) return setError("Another user already has that email.");
-    if (phone.trim() && phone.replace(/[\s()+-]/g, "").replace(/\D/g, "").length < 7) return setError("Enter a valid phone number or leave it blank.");
-    if (!user && password.length < 8) return setError("Temporary password must be at least 8 characters.");
+    if (phone.trim() && phone.replace(/\D/g, "").length < 7) return setError("Enter a valid phone number or leave it blank.");
+    if (!user && password.length < minPassword) return setError(`Temporary password must be at least ${minPassword} characters.`);
+    const useCustom = custom && !isAdminRole;
+    if (useCustom && countGranted(perms) === 0) return setError("Grant at least one privilege, or switch back to the role's permissions.");
 
-    const problem = onSave({ name: name.trim(), email: cleanEmail, phone: phone.trim(), roleId, password: user ? undefined : password });
+    setSaving(true);
+    const problem = await onSave({
+      name: name.trim(),
+      email: cleanEmail,
+      phone: phone.trim(),
+      roleId,
+      permissions: useCustom ? perms : undefined,
+      password: user ? undefined : password,
+    });
+    setSaving(false);
     if (problem) setError(problem);
   };
 
   return (
-    <Modal title={user ? `Edit ${user.name}` : "Add User"} onClose={onClose}>
+    <Modal title={user ? `Edit ${user.name}` : "Add User"} onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
-        <label className="block text-sm">
-          <span className="mb-1 block text-slate-600">Full name</span>
-          <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        </label>
-        <label className="block text-sm">
-          <span className="mb-1 block text-slate-600">Email</span>
-          <input type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} />
-        </label>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-600">Full name</span>
+            <input className={inputClass} value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-600">Email (used to sign in)</span>
+            <input type="email" className={inputClass} value={email} onChange={(e) => setEmail(e.target.value)} />
+          </label>
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Phone (optional)</span>
             <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} />
           </label>
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Role</span>
-            <select className={inputClass} value={roleId} onChange={(e) => setRoleId(e.target.value)} disabled={roleLocked}>
-              {seedRoles.map((r) => (
+            <select className={inputClass} value={roleId} onChange={(e) => changeRole(e.target.value)} disabled={roleLocked}>
+              {roles.map((r) => (
                 <option key={r.id} value={r.id}>{r.name}</option>
               ))}
             </select>
@@ -186,6 +291,47 @@ function UserForm({
           </p>
         )}
 
+        <section className="rounded-lg border border-slate-200">
+          <div className="border-b border-slate-200 px-4 py-3">
+            <h3 className="text-sm font-semibold text-slate-700">Privileges</h3>
+            <p className="text-xs text-slate-500">Decide what this person can view, create, edit and delete in each module.</p>
+          </div>
+          {isAdminRole ? (
+            <p className="px-4 py-3 text-sm text-slate-600">Administrators always have full access to every module, including user and role management.</p>
+          ) : (
+            <div className="space-y-3 p-4">
+              <div className="flex flex-wrap gap-4 text-sm text-slate-700">
+                <label className="flex items-center gap-2">
+                  <input type="radio" name="priv-mode" checked={!custom} onChange={() => setCustomMode(false)} className="text-blue-600" />
+                  Use the {selectedRole?.name ?? "role"} role's permissions
+                </label>
+                <label className="flex items-center gap-2">
+                  <input type="radio" name="priv-mode" checked={custom} onChange={() => setCustomMode(true)} className="text-blue-600" />
+                  Choose privileges for this user
+                </label>
+              </div>
+
+              {custom ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="text-slate-500">Quick set:</span>
+                    <button type="button" onClick={() => setPerms(roleDefaults(roleId))} className="rounded-full border border-slate-200 px-3 py-1 font-medium text-slate-600 hover:bg-slate-50">Reset to {selectedRole?.name} role</button>
+                    <button type="button" onClick={() => setPerms(Object.fromEntries(MODULES.map((m) => [m, { view: true, create: false, edit: false, delete: false }])) as Permissions)} className="rounded-full border border-slate-200 px-3 py-1 font-medium text-slate-600 hover:bg-slate-50">Read-only</button>
+                    <button type="button" onClick={() => setPerms(Object.fromEntries(MODULES.map((m) => [m, { view: false, create: false, edit: false, delete: false }])) as Permissions)} className="rounded-full border border-slate-200 px-3 py-1 font-medium text-slate-600 hover:bg-slate-50">Clear all</button>
+                    <span className="ml-auto text-slate-500">{countGranted(perms)} of {TOTAL_PERMS} granted</span>
+                  </div>
+                  <PermissionMatrix value={perms} onChange={setPerms} />
+                  <p className="text-xs text-slate-400">Create, edit and delete need view access, so ticking any of them also ticks view. Click a module name to toggle its whole row. Changing the role later won't overwrite these choices.</p>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  {selectedRole ? `${countGranted(selectedRole.permissions)} of ${TOTAL_PERMS} permissions, kept in step if the role is edited on the Roles page.` : ""}
+                </p>
+              )}
+            </div>
+          )}
+        </section>
+
         {!user && (
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Temporary password</span>
@@ -195,14 +341,15 @@ function UserForm({
                 Generate
               </button>
             </div>
+            <span className="mt-1 block text-xs text-slate-400">At least {minPassword} characters. They sign in with their email and this password.</span>
           </label>
         )}
 
-        {error && <p className="text-sm text-rose-600">{error}</p>}
+        {error && <p role="alert" className="text-sm text-rose-600">{error}</p>}
 
         <div className="flex justify-end gap-3">
           <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-          <button type="submit" className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700">{user ? "Save Changes" : "Create User"}</button>
+          <button type="submit" disabled={saving} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">{user ? "Save Changes" : "Create User"}</button>
         </div>
       </form>
     </Modal>
@@ -211,7 +358,9 @@ function UserForm({
 
 export default function Users() {
   const { user: me } = useAuth();
-  const [users, setUsers] = useState<ManagedUser[]>(() => seedUsers.map((u) => ({ ...u, createdAt: "2026-09-01", mustChangePassword: false })));
+  const [roles] = useState<Role[]>(loadRoles);
+  const [users, setUsers] = useState<ManagedUser[]>(loadUsers);
+  useEffect(() => saveUsers(users), [users]);
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive" | "never">("all");
@@ -226,7 +375,7 @@ export default function Users() {
 
   useEffect(() => () => window.clearTimeout(noticeTimer.current), []);
 
-  const roleName = (id: string) => seedRoles.find((r) => r.id === id)?.name ?? "—";
+  const roleName = (id: string) => roles.find((r) => r.id === id)?.name ?? "—";
 
   const activeAdmins = users.filter((u) => u.active && u.roleId === ADMIN_ROLE_ID).length;
   const isLastActiveAdmin = (u: ManagedUser) => u.active && u.roleId === ADMIN_ROLE_ID && activeAdmins <= 1;
@@ -290,21 +439,30 @@ export default function Users() {
       return next;
     });
 
-  const save = (data: { name: string; email: string; phone: string; roleId: string; password?: string }) => {
+  const save = async (data: UserFormData): Promise<string | null> => {
     if (editing === "new") {
       // TODO: POST /users via a services/ call (backend hashes the password)
+      const id = `u-${Date.now()}`;
       const created: ManagedUser = {
-        id: `u-${Date.now()}`,
+        id,
         name: data.name,
         email: data.email,
         phone: data.phone || undefined,
         roleId: data.roleId,
+        permissions: data.permissions,
         active: true,
         lastLogin: "Never",
         createdAt: todayISO(),
         mustChangePassword: true,
+        passwordHash: await hashPassword(id, data.password ?? ""),
       };
       setUsers((prev) => [...prev, created]);
+      logAudit({
+        action: "Create",
+        module: "Users",
+        summary: `Created user ${created.name} (${roleName(created.roleId)})`,
+        detail: `Email: ${created.email}\nPrivileges: ${created.permissions ? "chosen for this user" : "from the role"}`,
+      });
       setEditing(null);
       setCredentials({ title: "User created", user: created, password: data.password ?? "" });
       return null;
@@ -314,9 +472,27 @@ export default function Users() {
       if (editing.id === me?.id && data.roleId !== editing.roleId) return "You can't change your own role.";
       if (isLastActiveAdmin(editing) && data.roleId !== ADMIN_ROLE_ID) return "This is the only active administrator, so their role can't be changed.";
       // TODO: PUT /users/:id via a services/ call
-      setUsers((prev) => prev.map((u) => (u.id === editing.id ? { ...u, name: data.name, email: data.email, phone: data.phone || undefined, roleId: data.roleId } : u)));
+      setUsers((prev) =>
+        prev.map((u) =>
+          u.id === editing.id
+            ? { ...u, name: data.name, email: data.email, phone: data.phone || undefined, roleId: data.roleId, permissions: data.permissions }
+            : u
+        )
+      );
+      const roleChanged = data.roleId !== editing.roleId;
+      const privChanged = JSON.stringify(data.permissions ?? null) !== JSON.stringify(editing.permissions ?? null);
+      logAudit({
+        action: roleChanged || privChanged ? "Security" : "Update",
+        module: "Users",
+        summary: roleChanged || privChanged ? `Changed access for ${data.name}` : `Updated user ${data.name}`,
+        detail: [
+          roleChanged ? `Role: ${roleName(editing.roleId)} to ${roleName(data.roleId)}` : "",
+          privChanged ? `Privileges: ${data.permissions ? "now chosen for this user" : "back to the role's permissions"}` : "",
+          data.email !== editing.email ? `Email: ${editing.email} to ${data.email}` : "",
+        ].filter(Boolean).join("\n") || undefined,
+      });
       setEditing(null);
-      flash(`${data.name} updated.`);
+      flash(`${data.name} updated. Privilege changes apply the next time they sign in.`);
     }
     return null;
   };
@@ -326,6 +502,7 @@ export default function Users() {
     if (isLastActiveAdmin(u)) return flash("You can't deactivate the only active administrator.");
     // TODO: PATCH /users/:id/status via a services/ call
     setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, active: !x.active } : x)));
+    logAudit({ action: "Security", module: "Users", summary: `${u.active ? "Deactivated" : "Activated"} account for ${u.name}` });
     flash(`${u.name} ${u.active ? "deactivated" : "activated"}.`);
   };
 
@@ -341,15 +518,17 @@ export default function Users() {
     const ids = new Set(targets.map((u) => u.id));
     setUsers((prev) => prev.map((u) => (ids.has(u.id) ? { ...u, active } : u)));
     setSelected(new Set());
+    logAudit({ action: "Security", module: "Users", summary: `${active ? "Activated" : "Deactivated"} ${targets.length} account(s)`, detail: targets.map((t) => t.name).join(", ") });
     flash(`${targets.length} user(s) ${active ? "activated" : "deactivated"}.`);
   };
 
-  const resetPassword = (u: ManagedUser) => {
+  const resetPassword = async (u: ManagedUser) => {
     if (!window.confirm(`Reset the password for ${u.name}?`)) return;
     const password = generatePassword();
     // TODO: POST /users/:id/reset-password via a services/ call
-    const updated = { ...u, mustChangePassword: true };
+    const updated = { ...u, mustChangePassword: true, passwordHash: await hashPassword(u.id, password) };
     setUsers((prev) => prev.map((x) => (x.id === u.id ? updated : x)));
+    logAudit({ action: "Security", module: "Users", summary: `Reset password for ${u.name}` });
     setCredentials({ title: "Password reset", user: updated, password });
   };
 
@@ -359,6 +538,7 @@ export default function Users() {
     if (!window.confirm(`Delete ${u.name}? This can't be undone. Deactivating keeps their history.`)) return;
     // TODO: DELETE /users/:id via a services/ call
     setUsers((prev) => prev.filter((x) => x.id !== u.id));
+    logAudit({ action: "Delete", module: "Users", summary: `Deleted user ${u.name}`, detail: `Email: ${u.email}\nRole: ${roleName(u.roleId)}` });
     setSelected((s) => {
       const next = new Set(s);
       next.delete(u.id);
@@ -368,6 +548,7 @@ export default function Users() {
   };
 
   const exportCsv = () => {
+    logAudit({ action: "Export", module: "Users", summary: `Exported ${filtered.length} users to CSV` });
     const header = ["Name", "Email", "Phone", "Role", "Status", "Last login", "Created"];
     const lines = filtered.map((u) => [u.name, u.email, u.phone ?? "", roleName(u.roleId), u.active ? "Active" : "Inactive", u.lastLogin, u.createdAt].map(csvCell).join(","));
     const blob = new Blob([[header.map(csvCell).join(","), ...lines].join("\n")], { type: "text/csv;charset=utf-8" });
@@ -411,7 +592,7 @@ export default function Users() {
           </div>
           <select value={roleFilter} onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }} aria-label="Filter by role" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
             <option value="all">All roles</option>
-            {seedRoles.map((r) => (
+            {roles.map((r) => (
               <option key={r.id} value={r.id}>{r.name}</option>
             ))}
           </select>
@@ -477,7 +658,10 @@ export default function Users() {
                     </div>
                   </div>
                 </td>
-                <td className="px-5 py-3 text-slate-700">{roleName(u.roleId)}</td>
+                <td className="px-5 py-3 text-slate-700">
+                  {roleName(u.roleId)}
+                  {u.permissions && u.roleId !== ADMIN_ROLE_ID && <span className="ml-2 rounded bg-violet-50 px-1.5 py-0.5 text-xs text-violet-700" title="Privileges chosen for this user">custom</span>}
+                </td>
                 <td className="px-5 py-3 text-slate-600">{u.phone ?? "—"}</td>
                 <td className="px-5 py-3 text-slate-600">
                   {u.lastLogin}
@@ -522,13 +706,14 @@ export default function Users() {
         <UserForm
           user={editing === "new" ? null : editing}
           users={users}
+          roles={roles}
           isSelf={editing !== "new" && editing.id === me?.id}
           lockedAdmin={editing !== "new" && isLastActiveAdmin(editing)}
           onSave={save}
           onClose={() => setEditing(null)}
         />
       )}
-      {viewing && <UserDetail user={viewing} onClose={() => setViewing(null)} />}
+      {viewing && <UserDetail user={viewing} roles={roles} onClose={() => setViewing(null)} />}
       {credentials && <CredentialsModal {...credentials} onClose={() => setCredentials(null)} />}
     </div>
   );

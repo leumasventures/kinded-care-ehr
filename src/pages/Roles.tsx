@@ -1,11 +1,13 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Copy, Lock, Plus, Search, Trash2, Users as UsersIcon } from "lucide-react";
+import { logAudit, diffById } from "../services/audit";
 import {
   ACTIONS,
   MODULES,
   emptyPermissions,
-  seedRoles,
-  seedUsers,
+  loadRoles,
+  loadUsers,
+  saveRoles,
   type Action,
   type Module,
   type Permissions,
@@ -37,19 +39,28 @@ const PRESETS: { label: string; build: () => Permissions }[] = [
 ];
 
 export default function Roles() {
-  const [roles, setRoles] = useState<Role[]>(seedRoles);
-  const [selectedId, setSelectedId] = useState<string>((seedRoles[1] ?? seedRoles[0]).id);
+  const [roles, setRoles] = useState<Role[]>(loadRoles);
+  const savedRoles = useRef(roles);
+  useEffect(() => {
+    saveRoles(roles);
+    const d = diffById(savedRoles.current, roles, (a, b) => JSON.stringify(a) === JSON.stringify(b));
+    d.created.forEach((r) => logAudit({ action: "Security", module: "Roles", summary: `Created role ${r.name}`, detail: `${countGranted(r.permissions)} permissions` }));
+    d.updated.forEach((r) => logAudit({ action: "Security", module: "Roles", summary: `Changed role ${r.name}`, detail: `${countGranted(r.permissions)} permissions now granted` }));
+    d.deleted.forEach((r) => logAudit({ action: "Delete", module: "Roles", summary: `Deleted role ${r.name}` }));
+    savedRoles.current = roles;
+  }, [roles]);
+  const [users] = useState(loadUsers);
+  const [selectedId, setSelectedId] = useState<string>(() => (roles[1] ?? roles[0]).id);
   const [query, setQuery] = useState("");
 
-  const first = seedRoles[1] ?? seedRoles[0];
+  const first = roles[1] ?? roles[0];
   const [name, setName] = useState(first.name);
   const [description, setDescription] = useState(first.description);
   const [permissions, setPermissions] = useState<Permissions>(() => clone(first.permissions));
   const [error, setError] = useState("");
   const [saved, setSaved] = useState("");
 
-  // TODO: replace seedUsers with the live user list (shared with the Users page) via a services/ call
-  const userCount = (roleId: string) => seedUsers.filter((u) => u.roleId === roleId).length;
+  const userCount = (roleId: string) => users.filter((u) => u.roleId === roleId).length;
 
   const creating = selectedId === NEW;
   const current = roles.find((r) => r.id === selectedId);

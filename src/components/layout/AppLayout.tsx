@@ -1,10 +1,20 @@
-import { useState } from "react";
-import { Outlet } from "react-router-dom";
-import Sidebar from "./Sidebar";
+import { useEffect, useState } from "react";
+import { Outlet, useLocation } from "react-router-dom";
+import Sidebar, { navItems } from "./Sidebar";
+import { logAudit } from "../../services/audit";
 import Header from "./Header";
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const { pathname } = useLocation();
+
+  // Record which areas of the system people open.
+  useEffect(() => {
+    const match = navItems
+      .filter((i) => (i.path === "/" ? pathname === "/" : pathname.startsWith(i.path)))
+      .sort((a, b) => b.path.length - a.path.length)[0];
+    logAudit({ action: "View", module: match?.label ?? "App", summary: `Opened ${match?.label ?? pathname}` });
+  }, [pathname]);
 
   return (
     <div className="flex h-screen overflow-hidden bg-slate-50">

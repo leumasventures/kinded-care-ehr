@@ -1,8 +1,10 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { logAudit } from "../services/audit";
 import Modal from "../components/billing/Modal";
+import PatientChart from "../components/patients/PatientChart";
 import { balanceOf, formatDate, formatNaira, seedInvoices, statusOf, todayISO } from "../types/billing";
 import { seedAppointments } from "../types/appointments";
 import { seedAdmissions } from "../types/admissions";
@@ -28,7 +30,7 @@ const inputClass =
 
 const same = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 
-function Field({ label, children, className = "" }: { label: string; children: React.ReactNode; className?: string }) {
+function Field({ label, children, className = "" }: { label: string; children: ReactNode; className?: string }) {
   return (
     <label className={`block text-sm ${className}`}>
       <span className="mb-1 block text-slate-600">{label}</span>
@@ -174,7 +176,7 @@ function PatientForm({
   );
 }
 
-function Detail({ label, value }: { label: string; value: React.ReactNode }) {
+function Detail({ label, value }: { label: string; value: ReactNode }) {
   return (
     <div>
       <dt className="text-xs uppercase text-slate-400">{label}</dt>
@@ -184,6 +186,10 @@ function Detail({ label, value }: { label: string; value: React.ReactNode }) {
 }
 
 function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => void }) {
+  const [tab, setTab] = useState<"overview" | "notes" | "medications">("overview");
+  useEffect(() => {
+    logAudit({ action: "View", module: "Patients", summary: `Opened record of ${patient.name} (${patient.id})` });
+  }, [patient.id, patient.name]);
   const mine = <T extends { patient: string }>(rows: T[]) => rows.filter((r) => same(r.patient, patient.name));
   const appts = mine(seedAppointments).sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
   const admissions = mine(seedAdmissions);
@@ -202,6 +208,24 @@ function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => 
           </div>
         )}
 
+        <div role="tablist" className="flex gap-1 border-b border-slate-200">
+          {(["overview", "notes", "medications"] as const).map((t) => (
+            <button
+              key={t}
+              role="tab"
+              aria-selected={tab === t}
+              onClick={() => setTab(t)}
+              className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium capitalize ${tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
+            >
+              {t === "notes" ? "Clinical notes" : t === "medications" ? "Medications" : "Overview"}
+            </button>
+          ))}
+        </div>
+
+        {tab !== "overview" && <PatientChart patient={patient} tab={tab} />}
+
+        {tab === "overview" && (
+          <>
         <dl className="grid gap-4 sm:grid-cols-3">
           <Detail label="Age / gender" value={`${ageLabel(patient.dob)} · ${patient.gender}`} />
           <Detail label="Date of birth" value={formatDate(patient.dob)} />
@@ -280,6 +304,8 @@ function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => 
           <Link to="/appointments" className="rounded-lg border border-slate-200 px-3 py-1.5 font-medium text-slate-600 hover:bg-slate-50">Book appointment</Link>
           <Link to="/billing" className="rounded-lg border border-slate-200 px-3 py-1.5 font-medium text-slate-600 hover:bg-slate-50">Billing</Link>
         </div>
+          </>
+        )}
       </div>
     </Modal>
   );
@@ -323,13 +349,18 @@ export default function Patients() {
   const target = modal && modal.type !== "new" ? patients.find((p) => p.id === modal.id) : undefined;
 
   const save = (p: Patient) => {
+    const isNew = !patients.some((x) => x.id === p.id);
+    logAudit({ action: isNew ? "Create" : "Update", module: "Patients", summary: `${isNew ? "Registered" : "Updated details of"} ${p.name} (${p.id})` });
     setPatients((prev) => (prev.some((x) => x.id === p.id) ? prev.map((x) => (x.id === p.id ? p : x)) : [p, ...prev]));
     setModal(null);
   };
 
   const remove = (p: Patient) => {
     if (admittedNames.has(p.name.toLowerCase())) return window.alert(`${p.name} is currently admitted and can't be deleted.`);
-    if (window.confirm(`Delete ${p.name} (${p.id})? Their records elsewhere are not removed.`)) setPatients((prev) => prev.filter((x) => x.id !== p.id));
+    if (window.confirm(`Delete ${p.name} (${p.id})? Their records elsewhere are not removed.`)) {
+      logAudit({ action: "Delete", module: "Patients", summary: `Deleted patient ${p.name} (${p.id})` });
+      setPatients((prev) => prev.filter((x) => x.id !== p.id));
+    }
   };
 
   return (

@@ -12,12 +12,14 @@ import Pharmacy from "./pages/Pharmacy";
 import Nursing from "./pages/Nursing";
 import Admissions from "./pages/Admissions";
 import Billing from "./pages/Billing";
+import Accounts from "./pages/Account";
 import PriceList from "./pages/PriceList";
 import Reports from "./pages/Report";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Users from "./pages/Users";
 import Roles from "./pages/Roles";
+import AuditLog from "./pages/auditlog";
 
 export default function App() {
   return (
@@ -37,12 +39,14 @@ export default function App() {
           <Route path="/nursing" element={<ProtectedRoute module="Nursing"><Nursing /></ProtectedRoute>} />
           <Route path="/admissions" element={<ProtectedRoute module="Admissions"><Admissions /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute module="Billing"><Billing /></ProtectedRoute>} />
+          <Route path="/account" element={<ProtectedRoute module="Accounts"><Accounts /></ProtectedRoute>} />
           <Route path="/price-list" element={<ProtectedRoute module="Billing"><PriceList /></ProtectedRoute>} />
-          <Route path="/reports" element={<ProtectedRoute module="Reports"><Reports /></ProtectedRoute>} />
+          <Route path="/report" element={<ProtectedRoute module="Reports"><Reports /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute module="Settings"><Settings /></ProtectedRoute>} />
 
           <Route path="/admin" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />
           <Route path="/admin/users" element={<ProtectedRoute adminOnly><Users /></ProtectedRoute>} />
+          <Route path="/admin/audit" element={<ProtectedRoute adminOnly><AuditLog /></ProtectedRoute>} />
           <Route path="/admin/roles" element={<ProtectedRoute adminOnly><Roles /></ProtectedRoute>} />
         </Route>
       </Route>

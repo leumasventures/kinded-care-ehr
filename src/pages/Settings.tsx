@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useAuth } from "../context/AuthContext";
+import { logAudit } from "../services/audit";
 import { DEFAULT_SETTINGS, clearSavedSettings, loadSettings, saveSettings, type AppSettings } from "../types/settings";
 
 const inputClass =
@@ -83,6 +84,13 @@ export default function Settings() {
       invoiceFooter: form.invoiceFooter.trim(),
     };
     // TODO: PUT /settings via a services/ call
+    const changed = [
+      (Object.keys(clean.hospital) as (keyof typeof clean.hospital)[]).some((k) => clean.hospital[k] !== saved.hospital[k]) && "hospital profile",
+      (clean.invoiceDueDays !== saved.invoiceDueDays || clean.vatPercent !== saved.vatPercent || clean.invoiceFooter !== saved.invoiceFooter) && "billing defaults",
+      (JSON.stringify(clean.notify) !== JSON.stringify(saved.notify) || clean.lowStockThreshold !== saved.lowStockThreshold) && "notifications",
+      (clean.sessionTimeoutMins !== saved.sessionTimeoutMins || clean.minPasswordLength !== saved.minPasswordLength) && "security",
+    ].filter(Boolean);
+    logAudit({ action: changed.includes("security") ? "Security" : "Update", module: "Settings", summary: "Updated settings", detail: changed.length ? `Changed: ${changed.join(", ")}` : undefined });
     saveSettings(clean);
     setSavedSettings(clean);
     setForm(clean);
@@ -103,6 +111,7 @@ export default function Settings() {
     setSavedSettings(DEFAULT_SETTINGS);
     setForm(DEFAULT_SETTINGS);
     setError("");
+    logAudit({ action: "Update", module: "Settings", summary: "Reset all settings to defaults" });
     flash("Settings reset to defaults.");
   };
 
