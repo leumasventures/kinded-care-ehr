@@ -3,13 +3,16 @@ import { AlertTriangle, CheckCircle2, Circle, History, Plus, Trash2 } from "luci
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
 import { nowHHmm } from "../types/appointments";
+import { todayISO } from "../types/billing";
+import { logAudit } from "../services/audit";
+import { usePersisted } from "../services/store";
+import { medRound } from "../services/clinical";
+import { loadRecords, saveRecords, type PatientRecords } from "../types/records";
 import { WARD_NAMES, type WardName } from "../types/admissions";
 import {
-  ROUTES,
   VITALS_DUE_HOURS,
   admittedPatients,
   clock,
-  seedMeds,
   seedNotes,
   seedTasks,
   seedVitals,
@@ -20,7 +23,6 @@ import {
   type MedStatus,
   type NursingNote,
   type NursingTask,
-  type Route,
   type Vitals,
 } from "../types/nursing";
 
@@ -106,7 +108,6 @@ function VitalsForm({
 type ModalState =
   | { type: "vitals"; id: string }
   | { type: "history"; id: string }
-  | { type: "med" }
   | null;
 
 export default function Nursing() {
@@ -120,10 +121,12 @@ export default function Nursing() {
     return p ? `${p.patient} (${p.bed})` : "General";
   };
 
-  const [vitals, setVitals] = useState<Vitals[]>(seedVitals);
-  const [meds, setMeds] = useState<MedOrder[]>(seedMeds);
-  const [tasks, setTasks] = useState<NursingTask[]>(seedTasks);
-  const [notes, setNotes] = useState<NursingNote[]>(seedNotes);
+  const [vitals, setVitals] = usePersisted<Vitals[]>("hms_nursing_vitals", () => seedVitals);
+  // Doses come straight from the doctors' prescriptions, so nothing is typed in twice.
+  const [rec, setRec] = useState<PatientRecords>(loadRecords);
+  const meds = useMemo(() => medRound(patients, rec, todayISO()), [patients, rec]);
+  const [tasks, setTasks] = usePersisted<NursingTask[]>("hms_nursing_tasks", () => seedTasks);
+  const [notes, setNotes] = usePersisted<NursingNote[]>("hms_nursing_notes", () => seedNotes);
   const [tab, setTab] = useState<Tab>("vitals");
   const [ward, setWard] = useState<"all" | WardName>("all");
   const [pendingOnly, setPendingOnly] = useState(true);
@@ -161,8 +164,21 @@ export default function Nursing() {
   };
 
   const giveMed = (id: string, status: MedStatus) => {
-    // TODO: PUT /medication-administration/:id via a services/ call
-    setMeds((prev) => prev.map((m) => (m.id === id ? { ...m, status, doneAt: Date.now(), doneBy: nurse } : m)));
+    // TODO: POST /prescriptions/:id/administrations via a services/ call
+    const m = meds.find((x) => x.id === id);
+    const rx = rec.prescriptions.find((r) => r.id === m?.rxId);
+    if (!m || !rx || status === "Due") return;
+    const at = Date.now();
+    const next: PatientRecords = {
+      ...rec,
+      administrations: [
+        ...rec.administrations,
+        { id: uid(), prescriptionId: rx.id, patientId: rx.patientId, at, recordedAt: at, outcome: status, drug: rx.drug, dose: rx.dose, route: rx.route, prescribedBy: rx.prescribedBy, administeredBy: nurse, administeredRole: user?.roleName ?? "Nurse", slot: m.time },
+      ],
+    };
+    saveRecords(next);
+    setRec(next);
+    logAudit({ action: "Update", module: "Medication round", summary: `${status}: ${rx.drug} ${rx.dose} for ${m.admissionId} (${rx.patientId}), ${m.time} dose` });
   };
 
   const addTask = (e: FormEvent) => {
@@ -185,7 +201,7 @@ export default function Nursing() {
     .sort((a, b) => a.time.localeCompare(b.time));
   const shownNotes = notes.filter((n) => visibleIds.has(n.admissionId)).sort((a, b) => b.at - a.at);
 
-  const target = modal && modal.type !== "med" ? patientOf(modal.id) : undefined;
+  const target = modal ? patientOf(modal.id) : undefined;
 
   const cell = (val: string | number | undefined, bad: boolean) => (
     <span className={bad ? "font-semibold text-rose-600" : "text-slate-600"}>{val ?? "—"}</span>
@@ -314,11 +330,7 @@ export default function Nursing() {
               <input type="checkbox" checked={pendingOnly} onChange={(e) => setPendingOnly(e.target.checked)} className="h-4 w-4 rounded border-slate-300 text-blue-600" />
               Show pending only
             </label>
-            {can("Nursing", "create") && (
-              <button onClick={() => setModal({ type: "med" })} className="flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700">
-                <Plus size={16} /> Add medication
-              </button>
-            )}
+            <p className="text-xs text-slate-500">Today's doses come from the doctors' prescriptions for admitted patients. To change a drug, the doctor edits it in the patient's chart.</p>
           </div>
           <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
             <table className="w-full text-left text-sm">
@@ -480,82 +492,6 @@ export default function Nursing() {
         </Modal>
       )}
 
-      {modal?.type === "med" && (
-        <AddMedForm
-          patients={patients}
-          onSave={(m) => {
-            setMeds((prev) => [...prev, m]);
-            setModal(null);
-          }}
-          onClose={() => setModal(null)}
-        />
-      )}
     </div>
-  );
-}
-
-function AddMedForm({
-  patients,
-  onSave,
-  onClose,
-}: {
-  patients: ReturnType<typeof admittedPatients>;
-  onSave: (m: MedOrder) => void;
-  onClose: () => void;
-}) {
-  const [admissionId, setAdmissionId] = useState(patients[0]?.id ?? "");
-  const [drug, setDrug] = useState("");
-  const [dose, setDose] = useState("");
-  const [route, setRoute] = useState<Route>("Oral");
-  const [time, setTime] = useState(nowHHmm());
-  const [error, setError] = useState("");
-
-  const submit = (e: FormEvent) => {
-    e.preventDefault();
-    if (!admissionId || !drug.trim() || !dose.trim()) return setError("Patient, drug and dose are required.");
-    // TODO: POST /medication-orders via a services/ call (normally prescribed by the doctor)
-    onSave({ id: uid(), admissionId, drug: drug.trim(), dose: dose.trim(), route, time, status: "Due" });
-  };
-
-  return (
-    <Modal title="Add medication" onClose={onClose}>
-      <form onSubmit={submit} className="space-y-4">
-        <label className="block text-sm">
-          <span className="mb-1 block text-slate-600">Patient</span>
-          <select className={inputClass} value={admissionId} onChange={(e) => setAdmissionId(e.target.value)}>
-            {patients.map((p) => (
-              <option key={p.id} value={p.id}>{p.patient} ({p.bed})</option>
-            ))}
-          </select>
-        </label>
-        <div className="grid grid-cols-2 gap-4">
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">Drug</span>
-            <input className={inputClass} value={drug} onChange={(e) => setDrug(e.target.value)} />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">Dose</span>
-            <input className={inputClass} value={dose} onChange={(e) => setDose(e.target.value)} placeholder="e.g. 500 mg" />
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">Route</span>
-            <select className={inputClass} value={route} onChange={(e) => setRoute(e.target.value as Route)}>
-              {ROUTES.map((r) => (
-                <option key={r}>{r}</option>
-              ))}
-            </select>
-          </label>
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">Time</span>
-            <input type="time" className={inputClass} value={time} onChange={(e) => setTime(e.target.value)} />
-          </label>
-        </div>
-        {error && <p className="text-sm text-rose-600">{error}</p>}
-        <div className="flex justify-end gap-3">
-          <button type="button" onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-          <button type="submit" className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700">Add</button>
-        </div>
-      </form>
-    </Modal>
   );
 }

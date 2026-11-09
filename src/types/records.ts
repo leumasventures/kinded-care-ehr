@@ -20,6 +20,7 @@ export interface ClinicalNote {
   author: string;
   authorRole: string;
   addendumTo?: string; // id of the note this corrects or adds to
+  appointmentId?: string; // set when the note was written from an appointment
   /** Explicit lock state. When unset, the note locks itself NOTE_EDIT_WINDOW_HOURS after it was written. */
   locked?: boolean;
   lockLog?: LockEvent[];

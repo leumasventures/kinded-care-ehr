@@ -8,6 +8,7 @@ export const MODULES = [
   "Admissions",
   "Billing",
   "Accounts",
+  "Roster",
   "Reports",
   "Settings",
 ] as const;

@@ -93,3 +93,37 @@ export const seedPatients: Patient[] = [
   p(1014, "Ijeoma Ude", "2000-02-28", "Female", "0805 555 0114", "30 St Michael's Road, Aba", "O+", "AC", "Self-pay", "", ["Mr Ude", "Parent", "0805 555 0914"], "2026-07-19"),
   p(1015, "Samuel Agu", "1978-06-15", "Male", "0809 555 0115", "11 Cemetery Road, Aba", "O+", "AA", "Corporate", "", ["Rita Agu", "Spouse", "0809 555 0915"], "2025-12-01"),
 ];
+
+// ---- Hospital patient register (browser localStorage) ----
+// One shared register: every module picks patients from here, so a person must be registered before they are attended to.
+// TODO: replace with services/ calls (GET/POST/PUT/DELETE /patients) once the backend is ready.
+const KEY = "hms_patients";
+
+export function loadPatients(): Patient[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
+    if (Array.isArray(raw)) return raw as Patient[];
+  } catch {
+    /* ignore */
+  }
+  return seedPatients;
+}
+
+export function savePatients(list: Patient[]) {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(list));
+  } catch {
+    /* storage unavailable: changes last until refresh */
+  }
+}
+
+/** Finds likely duplicates before a new patient is registered (same phone, or same name and date of birth). */
+export function findDuplicates(list: Patient[], draft: Pick<Patient, "name" | "dob" | "phone">, ignoreId?: string) {
+  const digits = (s: string) => s.replace(/\D/g, "");
+  const name = draft.name.trim().toLowerCase();
+  return list.filter(
+    (p) =>
+      p.id !== ignoreId &&
+      ((digits(draft.phone).length >= 10 && digits(p.phone) === digits(draft.phone)) || (p.name.trim().toLowerCase() === name && p.dob === draft.dob))
+  );
+}

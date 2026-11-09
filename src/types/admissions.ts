@@ -1,3 +1,4 @@
+import { STORE_KEYS, loadStore } from "../services/store";
 import { addDaysISO, todayISO } from "./billing";
 
 export const WARDS = [
@@ -18,6 +19,7 @@ export type Outcome = (typeof OUTCOMES)[number];
 
 export interface Admission {
   id: string;
+  patientId: string; // registered patient (hms_patients)
   patient: string;
   ward: WardName;
   bed: string;
@@ -58,16 +60,19 @@ const ago = (days: number) => addDaysISO(todayISO(), -days);
 
 // Mock seed data. Replace with a services/ call when the backend is ready.
 export const seedAdmissions: Admission[] = [
-  { id: "AD-301", patient: "Ifeanyi Uche", ward: "General Ward", bed: "G-11", admittedOn: ago(3), doctor: "Dr. Eze", diagnosis: "Typhoid fever", status: "Admitted" },
-  { id: "AD-302", patient: "Amaka Nwosu", ward: "Maternity", bed: "M-02", admittedOn: ago(2), doctor: "Dr. Obi", diagnosis: "Post-delivery care", status: "Admitted" },
-  { id: "AD-303", patient: "Emeka Obi", ward: "ICU", bed: "I-03", admittedOn: ago(1), doctor: "Dr. Ade", diagnosis: "Severe pneumonia", status: "Admitted" },
-  { id: "AD-304", patient: "Ngozi Eke", ward: "General Ward", bed: "G-04", admittedOn: ago(5), doctor: "Dr. Eze", diagnosis: "Uncontrolled hypertension", status: "Admitted" },
-  { id: "AD-305", patient: "Chinedu Okoro", ward: "General Ward", bed: "G-07", admittedOn: ago(2), doctor: "Dr. Nwankwo", diagnosis: "Acute gastroenteritis", status: "Admitted" },
-  { id: "AD-306", patient: "Blessing Nnadi", ward: "Maternity", bed: "M-05", admittedOn: ago(1), doctor: "Dr. Obi", diagnosis: "Pre-eclampsia", status: "Admitted" },
-  { id: "AD-307", patient: "Baby Adaeze Eze", ward: "Pediatrics", bed: "P-03", admittedOn: ago(4), doctor: "Dr. Ade", diagnosis: "Severe malaria", status: "Admitted" },
-  { id: "AD-308", patient: "Master Kelechi Obi", ward: "Pediatrics", bed: "P-08", admittedOn: ago(2), doctor: "Dr. Ade", diagnosis: "Bronchiolitis", status: "Admitted" },
-  { id: "AD-309", patient: "Uche Anyanwu", ward: "ICU", bed: "I-01", admittedOn: ago(6), doctor: "Dr. Nwankwo", diagnosis: "Post-operative monitoring", status: "Admitted" },
-  { id: "AD-290", patient: "Ada Ibe", ward: "General Ward", bed: "G-02", admittedOn: ago(9), doctor: "Dr. Eze", diagnosis: "Cellulitis", status: "Discharged", dischargedOn: ago(4), outcome: "Recovered / improved" },
-  { id: "AD-291", patient: "Obinna Eze", ward: "General Ward", bed: "G-09", admittedOn: ago(8), doctor: "Dr. Nwankwo", diagnosis: "Appendicitis (post-op)", status: "Discharged", dischargedOn: ago(3), outcome: "Recovered / improved" },
-  { id: "AD-292", patient: "Mary Nwafor", ward: "Maternity", bed: "M-01", admittedOn: ago(6), doctor: "Dr. Obi", diagnosis: "Caesarean section", status: "Discharged", dischargedOn: ago(2), outcome: "Recovered / improved" },
+  { id: "AD-301", patientId: "P-1003", patient: "Ifeanyi Uche", ward: "General Ward", bed: "G-11", admittedOn: ago(3), doctor: "Dr. Eze", diagnosis: "Typhoid fever", status: "Admitted" },
+  { id: "AD-302", patientId: "P-1002", patient: "Amaka Nwosu", ward: "Maternity", bed: "M-02", admittedOn: ago(2), doctor: "Dr. Obi", diagnosis: "Post-delivery care", status: "Admitted" },
+  { id: "AD-303", patientId: "P-1005", patient: "Emeka Obi", ward: "ICU", bed: "I-03", admittedOn: ago(1), doctor: "Dr. Ade", diagnosis: "Severe pneumonia", status: "Admitted" },
+  { id: "AD-304", patientId: "P-1004", patient: "Ngozi Eke", ward: "General Ward", bed: "G-04", admittedOn: ago(5), doctor: "Dr. Eze", diagnosis: "Uncontrolled hypertension", status: "Admitted" },
+  { id: "AD-305", patientId: "P-1007", patient: "Chinedu Okoro", ward: "General Ward", bed: "G-07", admittedOn: ago(2), doctor: "Dr. Nwankwo", diagnosis: "Acute gastroenteritis", status: "Admitted" },
+  { id: "AD-306", patientId: "P-1006", patient: "Blessing Nnadi", ward: "Maternity", bed: "M-05", admittedOn: ago(1), doctor: "Dr. Obi", diagnosis: "Pre-eclampsia", status: "Admitted" },
+  { id: "AD-307", patientId: "P-1008", patient: "Baby Adaeze Eze", ward: "Pediatrics", bed: "P-03", admittedOn: ago(4), doctor: "Dr. Ade", diagnosis: "Severe malaria", status: "Admitted" },
+  { id: "AD-308", patientId: "P-1009", patient: "Master Kelechi Obi", ward: "Pediatrics", bed: "P-08", admittedOn: ago(2), doctor: "Dr. Ade", diagnosis: "Bronchiolitis", status: "Admitted" },
+  { id: "AD-309", patientId: "P-1010", patient: "Uche Anyanwu", ward: "ICU", bed: "I-01", admittedOn: ago(6), doctor: "Dr. Nwankwo", diagnosis: "Post-operative monitoring", status: "Admitted" },
+  { id: "AD-290", patientId: "P-1011", patient: "Ada Ibe", ward: "General Ward", bed: "G-02", admittedOn: ago(9), doctor: "Dr. Eze", diagnosis: "Cellulitis", status: "Discharged", dischargedOn: ago(4), outcome: "Recovered / improved" },
+  { id: "AD-291", patientId: "P-1012", patient: "Obinna Eze", ward: "General Ward", bed: "G-09", admittedOn: ago(8), doctor: "Dr. Nwankwo", diagnosis: "Appendicitis (post-op)", status: "Discharged", dischargedOn: ago(3), outcome: "Recovered / improved" },
+  { id: "AD-292", patientId: "P-1013", patient: "Mary Nwafor", ward: "Maternity", bed: "M-01", admittedOn: ago(6), doctor: "Dr. Obi", diagnosis: "Caesarean section", status: "Discharged", dischargedOn: ago(2), outcome: "Recovered / improved" },
 ];
+
+/** Live data (survives reloads). Pages read this instead of the demo seed. */
+export const loadAdmissions = (): Admission[] => loadStore(STORE_KEYS.admissions, () => seedAdmissions);

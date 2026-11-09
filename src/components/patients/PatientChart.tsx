@@ -93,7 +93,7 @@ function Medications({ patient, allergies, rec, commit, me, myRole, say }: Share
   const prescriber = canPrescribe(user);
   const canGive = can("Nursing", "create") || prescriber;
 
-  const [form, setForm] = useState({ drug: "", dose: "", route: "Oral", frequency: FREQUENCIES[1] as string, duration: "", instructions: "" });
+  const [form, setForm] = useState({ drug: "", dose: "", route: "Oral", frequency: FREQUENCIES[1] as string, duration: "", instructions: "", toPharmacy: true });
   const [when, setWhen] = useState(() => toLocalInput(Date.now()));
   const [formError, setFormError] = useState("");
   const [showForm, setShowForm] = useState(false);
@@ -139,10 +139,11 @@ function Medications({ patient, allergies, rec, commit, me, myRole, say }: Share
       prescribedAt: at,
       prescribedBy: me,
       status: "Active",
+      ...(form.toPharmacy ? { toDispense: true } : {}),
     };
     // TODO: POST /patients/:id/prescriptions via a services/ call
     commit({ ...rec, prescriptions: [...rec.prescriptions, order] });
-    setForm({ drug: "", dose: "", route: "Oral", frequency: FREQUENCIES[1], duration: "", instructions: "" });
+    setForm({ drug: "", dose: "", route: "Oral", frequency: FREQUENCIES[1], duration: "", instructions: "", toPharmacy: true });
     setWhen(toLocalInput(Date.now()));
     setFormError("");
     setShowForm(false);
@@ -230,6 +231,9 @@ function Medications({ patient, allergies, rec, commit, me, myRole, say }: Share
               </Field>
               <Field label="Duration"><input className={inputClass} value={form.duration} onChange={(e) => setForm({ ...form, duration: e.target.value })} placeholder="e.g. 5 days" /></Field>
               <Field label="Instructions" className="sm:col-span-2"><input className={inputClass} value={form.instructions} onChange={(e) => setForm({ ...form, instructions: e.target.value })} placeholder="e.g. after meals" /></Field>
+              <label className="flex items-center gap-2 text-sm text-slate-700 sm:col-span-2">
+                <input type="checkbox" checked={form.toPharmacy} onChange={(e) => setForm({ ...form, toPharmacy: e.target.checked })} className="h-4 w-4 rounded border-slate-300 text-blue-600" /> Send to pharmacy for dispensing (untick if given from ward stock)
+              </label>
               <WhenField label="Prescribed at" value={when} onChange={setWhen} />
             </div>
             {allergyHit && (

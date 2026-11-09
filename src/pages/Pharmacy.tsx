@@ -1,7 +1,12 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { AlertTriangle, ClipboardCheck, PackagePlus, Pill, Plus, Search, Trash2 } from "lucide-react";
+import { STORE_KEYS, usePersisted } from "../services/store";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
+import PatientPicker from "../components/patients/PatientPicker";
+import { allergyList, loadPatients, type Patient } from "../types/patients";
+import { loadRecords, saveRecords, type Prescription } from "../types/records";
+import { addCharges } from "../services/charges";
 import { addDaysISO, formatDate, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
 import { DOCTORS } from "../types/admissions";
@@ -194,23 +199,52 @@ interface DraftLine {
   qty: string;
 }
 
+/** What the pharmacist starts from when dispensing a doctor's prescriptions. */
+interface Preset {
+  patient: Patient;
+  prescriber: string;
+  rxIds: string[];
+  lines: { drug: string; qty: number }[];
+}
+
+const PER_DAY: Record<string, number> = {
+  "Stat (once)": 1, "Once daily": 1, "Twice daily (BD)": 2, "Three times daily (TDS)": 3, "Four times daily (QDS)": 4,
+  "Every 8 hours": 3, "Every 12 hours": 2, "At night": 1, "As needed (PRN)": 1,
+};
+/** A starting quantity from frequency and duration. The pharmacist always confirms it. */
+function suggestQty(rx: Prescription) {
+  const m = rx.duration.match(/(\d+)\s*(day|week|month)/i);
+  const days = m ? Number(m[1]) * (/week/i.test(m[2]) ? 7 : /month/i.test(m[2]) ? 30 : 1) : 1;
+  return Math.max(1, (PER_DAY[rx.frequency] ?? 1) * days);
+}
+
 function DispenseForm({
   drugs,
   priceOf,
   dispensing,
+  preset,
   onSave,
   onClose,
 }: {
   drugs: Drug[];
   priceOf: (d: Drug) => number;
   dispensing: Dispensing[];
+  preset?: Preset;
   onSave: (r: Dispensing) => void;
   onClose: () => void;
 }) {
   const available = drugs.filter((d) => d.stock > 0 && !isExpired(d)).sort((a, b) => a.name.localeCompare(b.name));
-  const [patient, setPatient] = useState("");
-  const [prescriber, setPrescriber] = useState(DOCTORS[0]);
-  const [lines, setLines] = useState<DraftLine[]>([{ key: 1, sku: available[0]?.sku ?? "", qty: "1" }]);
+  const [patient, setPatient] = useState<Patient | null>(preset?.patient ?? null);
+  const [prescriber, setPrescriber] = useState(preset && (DOCTORS as readonly string[]).includes(preset.prescriber) ? preset.prescriber : DOCTORS[0]);
+  const matched = (preset?.lines ?? []).map((l) => ({
+    ...l,
+    drug: available.find((d) => d.name.toLowerCase().includes(l.drug.toLowerCase()) || l.drug.toLowerCase().includes(d.name.toLowerCase())),
+  }));
+  const missing = (preset?.lines ?? []).filter((_, i) => !matched[i].drug).map((l) => l.drug);
+  const [lines, setLines] = useState<DraftLine[]>(() => {
+    const start = matched.filter((m) => m.drug).map((m, i) => ({ key: i + 1, sku: m.drug!.sku, qty: String(m.qty) }));
+    return start.length ? start : [{ key: 1, sku: available[0]?.sku ?? "", qty: "1" }];
+  });
   const [error, setError] = useState("");
 
   const drugOf = (sku: string) => drugs.find((d) => d.sku === sku);
@@ -222,7 +256,10 @@ function DispenseForm({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!patient.trim()) return setError("Patient name is required.");
+    if (!patient) return setError("Choose a registered patient. New patients must be registered first.");
+    // Never dispense something the patient is recorded as allergic to without noticing.
+    const hit = lines.map((l) => drugOf(l.sku)).find((d) => d && allergyList(patient).some((a) => a.length >= 3 && (d.name.toLowerCase().includes(a.toLowerCase()) || a.toLowerCase().includes(d.name.toLowerCase()))));
+    if (hit && !window.confirm(`${patient.name} has a recorded allergy (${allergyList(patient).join(", ")}) that may match ${hit.name}. Dispense anyway?`)) return;
     const wanted = new Map<string, number>();
     for (const l of lines) {
       const q = Math.floor(Number(l.qty));
@@ -241,21 +278,26 @@ function DispenseForm({
     onSave({
       id: nextRxId(dispensing),
       date: todayISO(),
-      patient: patient.trim(),
+      patientId: patient.id,
+      patient: patient.name,
       prescriber,
       lines: built,
       total: built.reduce((s, l) => s + l.qty * l.unitPrice, 0),
+      ...(preset ? { rxIds: preset.rxIds } : {}),
     });
   };
 
   return (
     <Modal title="Dispense Drugs" onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
+        {preset && (
+          <p className="rounded-lg bg-blue-50 px-3 py-2 text-sm text-blue-800">
+            Prescribed by {preset.prescriber}: {preset.lines.map((l) => l.drug).join(", ")}. Quantities are a suggestion from frequency and duration, so please confirm them.
+            {missing.length > 0 && <span className="mt-1 block font-medium text-amber-800">Not in stock or not found: {missing.join(", ")}. Add them with the button below if available under another name.</span>}
+          </p>
+        )}
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">Patient name</span>
-            <input className={inputClass} value={patient} onChange={(e) => setPatient(e.target.value)} autoFocus />
-          </label>
+          <PatientPicker value={patient} onChange={setPatient} autoFocus={!preset} showAllergies disabled={!!preset} />
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Prescribed by</span>
             <select className={inputClass} value={prescriber} onChange={(e) => setPrescriber(e.target.value)}>
@@ -310,12 +352,14 @@ function DispenseForm({
   );
 }
 
-type ModalState = { type: "add" } | { type: "dispense" } | { type: "receive"; sku: string } | { type: "count"; sku: string } | null;
+type ModalState = { type: "add" } | { type: "dispense"; preset?: Preset } | { type: "receive"; sku: string } | { type: "count"; sku: string } | null;
 
 export default function Pharmacy() {
-  const { can } = useAuth();
-  const [drugs, setDrugs] = useState<Drug[]>(seedDrugs);
-  const [log, setLog] = useState<Dispensing[]>(seedDispensing);
+  const { can, user } = useAuth();
+  const [queueTick, setQueueTick] = useState(0);
+  const [toast, setToast] = useState("");
+  const [drugs, setDrugs] = usePersisted<Drug[]>(STORE_KEYS.drugs, () => seedDrugs);
+  const [log, setLog] = usePersisted<Dispensing[]>(STORE_KEYS.dispensing, () => seedDispensing);
   const [tab, setTab] = useState<"inventory" | "log">("inventory");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"all" | DrugCategory>("all");
@@ -345,12 +389,42 @@ export default function Pharmacy() {
 
   const target = modal && (modal.type === "receive" || modal.type === "count") ? drugs.find((d) => d.sku === modal.sku) : undefined;
 
+  // Prescriptions written by doctors in a consultation that nobody has dispensed yet.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const waiting = useMemo(() => loadRecords().prescriptions.filter((r) => r.toDispense && !r.dispensedAt && r.status === "Active"), [queueTick]);
+  const queue = useMemo(() => {
+    const byPatient = new Map<string, Prescription[]>();
+    waiting.forEach((r) => byPatient.set(r.patientId, [...(byPatient.get(r.patientId) ?? []), r]));
+    return [...byPatient.entries()];
+  }, [waiting]);
+
+  const startQueued = (patientId: string, list: Prescription[]) => {
+    const person = loadPatients().find((p) => p.id === patientId);
+    if (!person) return window.alert("This patient is no longer on the register.");
+    setModal({
+      type: "dispense",
+      preset: { patient: person, prescriber: list[0].prescribedBy, rxIds: list.map((r) => r.id), lines: list.map((r) => ({ drug: r.drug, qty: suggestQty(r) })) },
+    });
+  };
+
   const dispense = (r: Dispensing) => {
     setDrugs((prev) => prev.map((d) => {
       const line = r.lines.find((l) => l.sku === d.sku);
       return line ? { ...d, stock: d.stock - line.qty } : d;
     }));
     setLog((prev) => [r, ...prev]);
+    // Charge the patient's invoice at the selling price.
+    const person = loadPatients().find((p) => p.id === r.patientId);
+    const charged = person ? addCharges(person, `rx:${r.id}`, r.lines.map((l) => ({ description: l.name, qty: l.qty, unitPrice: l.unitPrice })), `drugs dispensed ${r.id}`) : null;
+    // Close the prescriptions this fulfilled, so they leave the waiting list.
+    if (r.rxIds?.length) {
+      const rec = loadRecords();
+      const ids = new Set(r.rxIds);
+      saveRecords({ ...rec, prescriptions: rec.prescriptions.map((x) => (ids.has(x.id) ? { ...x, dispensedAt: Date.now(), dispensedBy: user?.name ?? "Pharmacy" } : x)) });
+      setQueueTick((n) => n + 1);
+    }
+    setToast(charged ? `${formatNaira(charged.amount)} charged to invoice ${charged.invoiceNumber}.` : "Dispensed.");
+    window.setTimeout(() => setToast(""), 4500);
     setModal(null);
     setTab("log");
   };
@@ -411,6 +485,25 @@ export default function Pharmacy() {
             </button>
           )}
         </div>
+      )}
+
+      {toast && <p role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-slate-800 px-4 py-2 text-sm text-white shadow-lg">{toast}</p>}
+
+      {queue.length > 0 && (
+        <section className="rounded-xl border border-blue-200 bg-blue-50/50">
+          <h2 className="flex items-center gap-2 border-b border-blue-200 px-5 py-3 text-sm font-semibold text-slate-800"><ClipboardCheck size={16} className="text-blue-600" /> Waiting to be dispensed ({queue.length})</h2>
+          <ul className="divide-y divide-blue-100">
+            {queue.map(([pid, list]) => (
+              <li key={pid} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
+                <div>
+                  <p className="font-medium text-slate-800">{loadPatients().find((p) => p.id === pid)?.name ?? pid} <span className="font-normal text-slate-500">· {list[0].prescribedBy}</span></p>
+                  <p className="text-xs text-slate-600">{list.map((r) => `${r.drug} ${r.dose} ${r.frequency}, ${r.duration}`).join(" · ")}</p>
+                </div>
+                {can("Pharmacy", "create") && <button onClick={() => startQueued(pid, list)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">Dispense</button>}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -580,7 +673,7 @@ export default function Pharmacy() {
           onClose={() => setModal(null)}
         />
       )}
-      {modal?.type === "dispense" && <DispenseForm drugs={drugs} priceOf={priceOf} dispensing={log} onSave={dispense} onClose={() => setModal(null)} />}
+      {modal?.type === "dispense" && <DispenseForm drugs={drugs} priceOf={priceOf} dispensing={log} preset={modal.preset} onSave={dispense} onClose={() => setModal(null)} />}
       {modal?.type === "receive" && target && <ReceiveForm drug={target} onSave={receive} onClose={() => setModal(null)} />}
       {modal?.type === "count" && target && <CountForm drug={target} onSave={recount} onClose={() => setModal(null)} />}
     </div>

@@ -6,7 +6,7 @@ import {
   formatDate,
   formatNaira,
   paidTotal,
-  seedInvoices,
+  loadInvoices,
   statusOf,
   todayISO,
 } from "../types/billing";
@@ -95,8 +95,8 @@ export default function Reports() {
   const financial = useMemo(() => {
     const priceCategory = new Map(loadPriceList().map((p) => [p.name.toLowerCase(), p.category as string]));
 
-    const invoices = seedInvoices.filter((i) => i.date >= from && i.date <= to);
-    const payments = seedInvoices
+    const invoices = loadInvoices().filter((i) => i.date >= from && i.date <= to);
+    const payments = loadInvoices()
       .flatMap((i) => i.payments.map((p) => ({ ...p, invoice: i })))
       .filter((p) => p.date >= from && p.date <= to);
 

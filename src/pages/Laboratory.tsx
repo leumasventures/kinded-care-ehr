@@ -1,7 +1,12 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { FileText, FlaskConical, Pencil, Plus, Search, X } from "lucide-react";
+import { STORE_KEYS, usePersisted } from "../services/store";
+import { chargeLabOrder, postLabResultToChart } from "../services/clinical";
+import { removeCharges } from "../services/charges";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
+import PatientPicker from "../components/patients/PatientPicker";
+import type { Patient } from "../types/patients";
 import LabReportPrint from "../components/lab/LabReportPrint";
 import { formatDate, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
@@ -39,7 +44,7 @@ const inputClass =
 
 function NewOrderForm({ orders, onSave, onClose }: { orders: LabOrder[]; onSave: (o: LabOrder) => void; onClose: () => void }) {
   const catalog = useMemo(() => loadPriceList().filter((p) => p.category === "Laboratory"), []);
-  const [patient, setPatient] = useState("");
+  const [patient, setPatient] = useState<Patient | null>(null);
   const [requestedBy, setRequestedBy] = useState(DOCTORS[0]);
   const [priority, setPriority] = useState<Priority>("Routine");
   const [note, setNote] = useState("");
@@ -55,12 +60,13 @@ function NewOrderForm({ orders, onSave, onClose }: { orders: LabOrder[]; onSave:
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!patient.trim()) return setError("Patient name is required.");
+    if (!patient) return setError("Choose a registered patient. New patients must be registered first.");
     if (chosen.length === 0) return setError("Select at least one test.");
     // TODO: POST /lab-orders via a services/ call
     onSave({
       id: nextLabId(orders),
-      patient: patient.trim(),
+      patientId: patient.id,
+      patient: patient.name,
       requestedBy,
       date: todayISO(),
       priority,
@@ -74,10 +80,9 @@ function NewOrderForm({ orders, onSave, onClose }: { orders: LabOrder[]; onSave:
     <Modal title="New Lab Order" onClose={onClose} wide>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-3">
-          <label className="block text-sm sm:col-span-1">
-            <span className="mb-1 block text-slate-600">Patient name</span>
-            <input className={inputClass} value={patient} onChange={(e) => setPatient(e.target.value)} autoFocus />
-          </label>
+          <div className="sm:col-span-1">
+            <PatientPicker value={patient} onChange={setPatient} autoFocus showAllergies />
+          </div>
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Requested by</span>
             <select className={inputClass} value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)}>
@@ -187,8 +192,9 @@ function ResultsForm({ order, onSave, onClose }: { order: LabOrder; onSave: (tes
 type ModalState = { type: "new" } | { type: "results"; id: string } | { type: "report"; id: string } | null;
 
 export default function Laboratory() {
-  const { can } = useAuth();
-  const [orders, setOrders] = useState<LabOrder[]>(seedLabOrders);
+  const { can, user } = useAuth();
+  const [note, setNote] = useState("");
+  const [orders, setOrders] = usePersisted<LabOrder[]>(STORE_KEYS.labOrders, () => seedLabOrders);
   const [filter, setFilter] = useState<"All" | LabStatus>("All");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState<ModalState>(null);
@@ -223,12 +229,24 @@ export default function Laboratory() {
   };
 
   const cancel = (o: LabOrder) => {
-    if (window.confirm(`Cancel lab order ${o.id} for ${o.patient}?`)) setStatus(o.id, "Cancelled");
+    if (!window.confirm(`Cancel lab order ${o.id} for ${o.patient}? Its charge will be taken off the invoice.`)) return;
+    setStatus(o.id, "Cancelled");
+    const r = removeCharges(o.patientId, `lab:${o.id}`, `lab order ${o.id} cancelled`);
+    if (r.removed > 0) say(`Order cancelled. ${formatNaira(r.amount)} taken off invoice ${r.invoiceNumber}.`);
+    else if (r.blocked > 0) say(`Order cancelled, but invoice ${r.invoiceNumber} is already paid. Adjust it in Billing.`);
+  };
+
+  const say = (m: string) => {
+    setNote(m);
+    window.setTimeout(() => setNote(""), 4500);
   };
 
   const saveResults = (tests: LabTest[]) => {
     if (!target) return;
-    setOrders((prev) => prev.map((o) => (o.id === target.id ? { ...o, tests, status: "Ready", reportedOn: o.reportedOn ?? todayISO() } : o)));
+    const done: LabOrder = { ...target, tests, status: "Ready", reportedOn: target.reportedOn ?? todayISO() };
+    setOrders((prev) => prev.map((o) => (o.id === target.id ? done : o)));
+    postLabResultToChart(done, { name: user?.name ?? "Laboratory", role: user?.roleName ?? "" });
+    say(`Results saved and posted to ${target.patient}'s chart.`);
     setModal(null);
   };
 
@@ -348,6 +366,7 @@ export default function Laboratory() {
           </tbody>
         </table>
       </div>
+      {note && <p role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-slate-800 px-4 py-2 text-sm text-white shadow-lg">{note}</p>}
       <p className="text-xs text-slate-400">Pending → Collect sample → Start → Enter results → Ready. Urgent orders sort to the top of each stage.</p>
 
       {modal?.type === "new" && (
@@ -355,6 +374,8 @@ export default function Laboratory() {
           orders={orders}
           onSave={(o) => {
             setOrders((prev) => [o, ...prev]);
+            const r = chargeLabOrder(o);
+            say(r ? `${formatNaira(r.amount)} charged to invoice ${r.invoiceNumber}.` : "Order saved.");
             setModal(null);
           }}
           onClose={() => setModal(null)}

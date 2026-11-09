@@ -27,6 +27,7 @@ const categoryStyle: Record<NoteCategory, string> = {
   Procedure: "bg-teal-50 text-teal-700",
   "Nursing note": "bg-emerald-50 text-emerald-700",
   Handover: "bg-amber-50 text-amber-700",
+  "Lab result": "bg-sky-50 text-sky-700",
   Other: "bg-slate-100 text-slate-600",
 };
 
@@ -479,6 +480,7 @@ export default function PatientNotes({ patient, rec, commit, me, myRole, canAdd,
                     {locked ? <Lock size={11} /> : <LockOpen size={11} />} {locked ? "Locked" : "Open"}
                   </span>
                   {note.revisions?.length ? <span className="text-slate-400">edited</span> : null}
+                  {note.appointmentId && <span className="text-slate-400">Appointment {note.appointmentId}</span>}
                 </span>
                 <span className="text-slate-500">{note.author}{note.authorRole && ` · ${note.authorRole}`}</span>
               </div>

@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { AlertTriangle, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { logAudit } from "../services/audit";
 import Modal from "../components/billing/Modal";
 import PatientChart from "../components/patients/PatientChart";
-import { balanceOf, formatDate, formatNaira, seedInvoices, statusOf, todayISO } from "../types/billing";
-import { seedAppointments } from "../types/appointments";
-import { seedAdmissions } from "../types/admissions";
-import { seedLabOrders } from "../types/laboratory";
-import { seedDispensing } from "../types/pharmacy";
+import PatientDocuments from "../components/documents/PatientDocuments";
+import { balanceOf, formatDate, formatNaira, loadInvoices, statusOf, todayISO } from "../types/billing";
+import { loadAppointments } from "../types/appointments";
+import { loadAdmissions } from "../types/admissions";
+import { loadLabOrders } from "../types/laboratory";
+import { loadDispensing } from "../types/pharmacy";
+import { loadRecords } from "../types/records";
 import {
   BLOOD_GROUPS,
   GENOTYPES,
@@ -17,8 +19,9 @@ import {
   RELATIONSHIPS,
   ageLabel,
   allergyList,
+  loadPatients,
   nextPatientId,
-  seedPatients,
+  savePatients,
   type BloodGroup,
   type Genotype,
   type Patient,
@@ -186,16 +189,16 @@ function Detail({ label, value }: { label: string; value: ReactNode }) {
 }
 
 function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => void }) {
-  const [tab, setTab] = useState<"overview" | "notes" | "medications">("overview");
+  const [tab, setTab] = useState<"overview" | "notes" | "medications" | "documents">("overview");
   useEffect(() => {
     logAudit({ action: "View", module: "Patients", summary: `Opened record of ${patient.name} (${patient.id})` });
   }, [patient.id, patient.name]);
-  const mine = <T extends { patient: string }>(rows: T[]) => rows.filter((r) => same(r.patient, patient.name));
-  const appts = mine(seedAppointments).sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
-  const admissions = mine(seedAdmissions);
-  const labs = mine(seedLabOrders);
-  const invoices = mine(seedInvoices);
-  const rx = mine(seedDispensing);
+  const mine = <T extends { patient: string; patientId?: string }>(rows: T[]) => rows.filter((r) => (r.patientId ? r.patientId === patient.id : same(r.patient, patient.name)));
+  const appts = mine(loadAppointments()).sort((a, b) => `${b.date}${b.time}`.localeCompare(`${a.date}${a.time}`));
+  const admissions = mine(loadAdmissions());
+  const labs = mine(loadLabOrders());
+  const invoices = mine(loadInvoices());
+  const rx = mine(loadDispensing());
   const owing = invoices.reduce((s, i) => s + balanceOf(i), 0);
   const allergies = allergyList(patient);
 
@@ -209,7 +212,7 @@ function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => 
         )}
 
         <div role="tablist" className="flex gap-1 border-b border-slate-200">
-          {(["overview", "notes", "medications"] as const).map((t) => (
+          {(["overview", "notes", "medications", "documents"] as const).map((t) => (
             <button
               key={t}
               role="tab"
@@ -217,12 +220,13 @@ function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => 
               onClick={() => setTab(t)}
               className={`-mb-px border-b-2 px-4 py-2 text-sm font-medium capitalize ${tab === t ? "border-blue-600 text-blue-600" : "border-transparent text-slate-500 hover:text-slate-700"}`}
             >
-              {t === "notes" ? "Clinical notes" : t === "medications" ? "Medications" : "Overview"}
+              {t === "notes" ? "Clinical notes" : t === "medications" ? "Medications" : t === "documents" ? "Documents" : "Overview"}
             </button>
           ))}
         </div>
 
-        {tab !== "overview" && <PatientChart patient={patient} tab={tab} />}
+        {(tab === "notes" || tab === "medications") && <PatientChart patient={patient} tab={tab} />}
+        {tab === "documents" && <PatientDocuments patient={patient} />}
 
         {tab === "overview" && (
           <>
@@ -315,16 +319,23 @@ type ModalState = { type: "new" } | { type: "edit"; id: string } | { type: "view
 
 export default function Patients() {
   const { can } = useAuth();
-  const [patients, setPatients] = useState<Patient[]>(seedPatients);
+  const [patients, setPatients] = useState<Patient[]>(loadPatients);
+  const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState("");
   const [gender, setGender] = useState<"all" | "Male" | "Female">("all");
   const [payer, setPayer] = useState<"all" | Payer>("all");
   const [allergyOnly, setAllergyOnly] = useState(false);
-  const [modal, setModal] = useState<ModalState>(null);
+  // Other pages link here with ?open=P-1001 to show a patient's chart.
+  const openId = params.get("open");
+  const [modal, setModal] = useState<ModalState>(() => (openId ? { type: "view", id: openId } : null));
+  const closeModal = () => {
+    setModal(null);
+    if (params.has("open")) setParams({}, { replace: true });
+  };
 
-  const admittedNames = useMemo(() => new Set(seedAdmissions.filter((a) => a.status === "Admitted").map((a) => a.patient.toLowerCase())), []);
+  const admittedNames = useMemo(() => new Set(loadAdmissions().filter((a) => a.status === "Admitted").map((a) => a.patient.toLowerCase())), []);
   const lastVisit = (p: Patient) => {
-    const dates = seedAppointments.filter((a) => same(a.patient, p.name) && a.status === "Completed").map((a) => a.date).sort();
+    const dates = loadAppointments().filter((a) => same(a.patient, p.name) && a.status === "Completed").map((a) => a.date).sort();
     return dates.length ? dates[dates.length - 1] : undefined;
   };
 
@@ -351,15 +362,22 @@ export default function Patients() {
   const save = (p: Patient) => {
     const isNew = !patients.some((x) => x.id === p.id);
     logAudit({ action: isNew ? "Create" : "Update", module: "Patients", summary: `${isNew ? "Registered" : "Updated details of"} ${p.name} (${p.id})` });
-    setPatients((prev) => (prev.some((x) => x.id === p.id) ? prev.map((x) => (x.id === p.id ? p : x)) : [p, ...prev]));
-    setModal(null);
+    const next = patients.some((x) => x.id === p.id) ? patients.map((x) => (x.id === p.id ? p : x)) : [p, ...patients];
+    setPatients(next);
+    savePatients(next); // TODO: POST/PUT /patients via a services/ call
+    closeModal();
   };
 
   const remove = (p: Patient) => {
     if (admittedNames.has(p.name.toLowerCase())) return window.alert(`${p.name} is currently admitted and can't be deleted.`);
-    if (window.confirm(`Delete ${p.name} (${p.id})? Their records elsewhere are not removed.`)) {
+    const rec = loadRecords();
+    if (rec.notes.some((n) => n.patientId === p.id) || rec.prescriptions.some((r) => r.patientId === p.id))
+      return window.alert(`${p.name} has clinical notes or prescriptions on file. Clinical records are kept, so this patient can't be deleted.`);
+    if (window.confirm(`Delete ${p.name} (${p.id})? This can't be undone.`)) {
       logAudit({ action: "Delete", module: "Patients", summary: `Deleted patient ${p.name} (${p.id})` });
-      setPatients((prev) => prev.filter((x) => x.id !== p.id));
+      const next = patients.filter((x) => x.id !== p.id);
+      setPatients(next);
+      savePatients(next);
     }
   };
 
@@ -480,9 +498,9 @@ export default function Patients() {
         </table>
       </div>
 
-      {modal?.type === "new" && <PatientForm patient={null} patients={patients} onSave={save} onClose={() => setModal(null)} />}
-      {modal?.type === "edit" && target && <PatientForm patient={target} patients={patients} onSave={save} onClose={() => setModal(null)} />}
-      {modal?.type === "view" && target && <PatientDetail patient={target} onClose={() => setModal(null)} />}
+      {modal?.type === "new" && <PatientForm patient={null} patients={patients} onSave={save} onClose={() => closeModal()} />}
+      {modal?.type === "edit" && target && <PatientForm patient={target} patients={patients} onSave={save} onClose={() => closeModal()} />}
+      {modal?.type === "view" && target && <PatientDetail patient={target} onClose={() => closeModal()} />}
     </div>
   );
 }

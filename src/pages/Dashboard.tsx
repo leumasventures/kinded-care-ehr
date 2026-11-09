@@ -1,14 +1,15 @@
 import { useMemo, type ComponentType, type ReactNode } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, BedDouble, CalendarDays, FlaskConical, Pill, Receipt, Stethoscope, Users } from "lucide-react";
+import { AlertTriangle, BedDouble, CalendarClock, CalendarDays, FlaskConical, Pill, Receipt, Stethoscope, Users } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import type { Module } from "../types/access";
-import { seedPatients } from "../types/patients";
-import { SLOTS, fmtTime, isActive, nowHHmm, seedAppointments } from "../types/appointments";
-import { WARDS, seedAdmissions, stayDays } from "../types/admissions";
-import { addDaysISO, balanceOf, calcTotals, formatDate, formatNaira, seedInvoices, statusOf, todayISO } from "../types/billing";
-import { seedLabOrders } from "../types/laboratory";
-import { isExpired, isExpiringSoon, isLow, isOut, seedDrugs } from "../types/pharmacy";
+import { loadPatients } from "../types/patients";
+import { SLOTS, fmtTime, isActive, nowHHmm, loadAppointments } from "../types/appointments";
+import { WARDS, loadAdmissions, stayDays } from "../types/admissions";
+import { addDaysISO, balanceOf, calcTotals, formatDate, formatNaira, loadInvoices, statusOf, todayISO } from "../types/billing";
+import { loadLabOrders } from "../types/laboratory";
+import { isExpired, isExpiringSoon, isLow, isOut, loadDrugs } from "../types/pharmacy";
+import { isOnDutyNow, loadRoster, shiftTimes, shiftWindow } from "../types/roster";
 import { seedDoctors, scheduleLabel, worksToday } from "../types/doctors";
 
 type Icon = ComponentType<{ size?: number }>;
@@ -40,9 +41,9 @@ export default function Dashboard() {
     const now = nowHHmm();
 
     // TODO: replace these seed imports with services/ calls; the page reads the same data the module pages start from.
-    const todays = seedAppointments.filter((a) => a.date === today && isActive(a.status)).sort((a, b) => a.time.localeCompare(b.time));
+    const todays = loadAppointments().filter((a) => a.date === today && isActive(a.status)).sort((a, b) => a.time.localeCompare(b.time));
     const remaining = todays.filter((a) => a.time >= now && (a.status === "Scheduled" || a.status === "Checked in"));
-    const admitted = seedAdmissions.filter((a) => a.status === "Admitted");
+    const admitted = loadAdmissions().filter((a) => a.status === "Admitted");
 
     const wards = WARDS.map((w) => {
       const occupied = admitted.filter((a) => a.ward === w.name).length;
@@ -50,12 +51,12 @@ export default function Dashboard() {
     });
     const totalBeds = WARDS.reduce((s, w) => s + w.beds, 0);
 
-    const outstanding = seedInvoices.reduce((s, i) => s + Math.max(0, balanceOf(i)), 0);
-    const overdue = seedInvoices.filter((i) => statusOf(i) === "Overdue");
+    const outstanding = loadInvoices().reduce((s, i) => s + Math.max(0, balanceOf(i)), 0);
+    const overdue = loadInvoices().filter((i) => statusOf(i) === "Overdue");
     const overdueAmount = overdue.reduce((s, i) => s + balanceOf(i), 0);
-    const payments = seedInvoices.flatMap((i) => i.payments);
+    const payments = loadInvoices().flatMap((i) => i.payments);
     const collectedMonth = payments.filter((p) => p.date.startsWith(month)).reduce((s, p) => s + p.amount, 0);
-    const billedMonth = seedInvoices.filter((i) => i.date.startsWith(month)).reduce((s, i) => s + calcTotals(i).total, 0);
+    const billedMonth = loadInvoices().filter((i) => i.date.startsWith(month)).reduce((s, i) => s + calcTotals(i).total, 0);
 
     const days = Array.from({ length: 7 }, (_, i) => addDaysISO(today, i - 6));
     const revenue = days.map((day) => ({
@@ -63,18 +64,18 @@ export default function Dashboard() {
       amount: payments.filter((p) => p.date === day).reduce((s, p) => s + p.amount, 0),
     }));
 
-    const openLabs = seedLabOrders.filter((o) => o.status === "Pending" || o.status === "Sample collected" || o.status === "Processing");
+    const openLabs = loadLabOrders().filter((o) => o.status === "Pending" || o.status === "Sample collected" || o.status === "Processing");
     const urgentLabs = openLabs.filter((o) => o.priority === "Urgent");
 
-    const lowStock = seedDrugs.filter((x) => isLow(x) || isOut(x));
-    const outOfStock = seedDrugs.filter(isOut);
-    const expired = seedDrugs.filter(isExpired);
-    const expiring = seedDrugs.filter(isExpiringSoon);
+    const lowStock = loadDrugs().filter((x) => isLow(x) || isOut(x));
+    const outOfStock = loadDrugs().filter(isOut);
+    const expired = loadDrugs().filter(isExpired);
+    const expiring = loadDrugs().filter(isExpiringSoon);
 
     return {
       today,
-      patients: seedPatients.length,
-      newThisMonth: seedPatients.filter((p) => p.registeredOn.startsWith(month)).length,
+      patients: loadPatients().length,
+      newThisMonth: loadPatients().filter((p) => p.registeredOn.startsWith(month)).length,
       todays,
       remaining,
       completedToday: todays.filter((a) => a.status === "Completed").length,
@@ -122,6 +123,17 @@ export default function Dashboard() {
   const dayName = (iso: string) => new Date(`${iso}T00:00:00`).toLocaleDateString("en-NG", { weekday: "short" });
   const onDuty = seedDoctors.filter((x) => worksToday(x) && x.status !== "On Leave");
 
+  const myDuty = useMemo(() => {
+    const now = new Date();
+    const mine = loadRoster()
+      .filter((e) => e.staffId === user?.id && e.shift !== "Leave" && shiftWindow(e).end > now)
+      .sort((a, b) => shiftWindow(a).start.getTime() - shiftWindow(b).start.getTime());
+    const next = mine[0];
+    if (!next) return { text: "No upcoming shifts rostered.", now: false };
+    const day = next.date === todayISO() ? "Today" : formatDate(next.date);
+    return { text: `${day}: ${next.shift} (${shiftTimes(next.shift)})${next.unit !== "—" ? `, ${next.unit}` : ""}`, now: isOnDutyNow(next, now) };
+  }, [user?.id]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -161,6 +173,19 @@ export default function Dashboard() {
             </Link>
           ))}
       </div>
+
+      {myDuty && (
+        <Link to="/duty-roster" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-white px-5 py-4 hover:bg-slate-50">
+          <span className="flex items-center gap-3">
+            <CalendarClock size={20} className="text-blue-600" />
+            <span>
+              <span className="block text-sm font-semibold text-slate-800">My duty</span>
+              <span className="block text-sm text-slate-500">{myDuty.text}</span>
+            </span>
+          </span>
+          {myDuty.now && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">On duty now</span>}
+        </Link>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         {can("Appointments", "view") && (

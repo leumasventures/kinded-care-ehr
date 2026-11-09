@@ -1,10 +1,11 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { STORE_KEYS, usePersisted } from "../services/store";
 import Modal from "../components/billing/Modal";
 import { formatDate, todayISO } from "../types/billing";
-import { SLOTS, fmtTime, isActive, nowHHmm, seedAppointments } from "../types/appointments";
-import { seedAdmissions } from "../types/admissions";
+import { SLOTS, fmtTime, isActive, nowHHmm, loadAppointments } from "../types/appointments";
+import { loadAdmissions } from "../types/admissions";
 import {
   DAY_LABELS,
   DOCTOR_STATUSES,
@@ -128,7 +129,7 @@ type ModalState = { type: "new" } | { type: "edit"; id: string } | { type: "view
 
 export default function Doctors() {
   const { can } = useAuth();
-  const [doctors, setDoctors] = useState<Doctor[]>(seedDoctors);
+  const [doctors, setDoctors] = usePersisted<Doctor[]>(STORE_KEYS.doctors, () => seedDoctors);
   const [query, setQuery] = useState("");
   const [specialty, setSpecialty] = useState("all");
   const [status, setStatus] = useState<"all" | DoctorStatus>("all");
@@ -138,10 +139,10 @@ export default function Doctors() {
   const now = nowHHmm();
 
   const todayAppts = (d: Doctor) =>
-    seedAppointments.filter((a) => a.doctor === d.name && a.date === today && isActive(a.status)).sort((a, b) => a.time.localeCompare(b.time));
+    loadAppointments().filter((a) => a.doctor === d.name && a.date === today && isActive(a.status)).sort((a, b) => a.time.localeCompare(b.time));
   const capacity = (d: Doctor) => SLOTS.filter((t) => t >= d.start && t < d.end).length;
-  const admitted = (d: Doctor) => seedAdmissions.filter((a) => a.doctor === d.name && a.status === "Admitted");
-  const upcomingCount = (d: Doctor) => seedAppointments.filter((a) => a.doctor === d.name && a.date >= today && a.status === "Scheduled").length;
+  const admitted = (d: Doctor) => loadAdmissions().filter((a) => a.doctor === d.name && a.status === "Admitted");
+  const upcomingCount = (d: Doctor) => loadAppointments().filter((a) => a.doctor === d.name && a.date >= today && a.status === "Scheduled").length;
 
   const stats = [
     { label: "Doctors", value: doctors.length },

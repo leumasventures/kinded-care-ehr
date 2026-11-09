@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { balanceOf, formatDate, formatNaira, seedInvoices, todayISO } from "../types/billing";
-import { isLive, lastMonths, monthLabel, monthOf, round2, type Txn } from "../types/account";
+import { balanceOf, formatDate, formatNaira, loadInvoices, todayISO } from "../types/billing";
+import { isLive, lastMonths, monthLabel, monthOf, round2, type Txn } from "../types/accounts";
 import { useLedger, type Ledger } from "../components/accounts/useLedger";
 import Transactions from "../components/accounts/Transactions";
 import MoneyAccounts from "../components/accounts/MoneyAccounts";
@@ -43,7 +43,7 @@ function Overview({ ledger }: { ledger: Ledger }) {
     thisMonth.filter((t) => t.type === "Expense" && isLive(t)).forEach((t) => byCategory.set(t.category, (byCategory.get(t.category) ?? 0) + t.amount));
     const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1]);
 
-    return { income, expense, months, categories, receivable: seedInvoices.reduce((s, i) => s + Math.max(0, balanceOf(i)), 0) };
+    return { income, expense, months, categories, receivable: loadInvoices().reduce((s, i) => s + Math.max(0, balanceOf(i)), 0) };
   }, [txns, month]);
 
   const total = round2(data.accounts.filter((a) => a.active).reduce((s, a) => s + (balances[a.id] ?? 0), 0));

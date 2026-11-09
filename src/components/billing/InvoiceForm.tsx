@@ -1,6 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import Modal from "./Modal";
+import PatientPicker from "../patients/PatientPicker";
+import type { Patient } from "../../types/patients";
 import {
   PAYMENT_METHODS,
   addDaysISO,
@@ -32,7 +34,7 @@ interface InvoiceFormProps {
 const blankItem = (): DraftItem => ({ id: uid(), description: "", qty: "1", unitPrice: "" });
 
 export default function InvoiceForm({ number, onSave, onCancel }: InvoiceFormProps) {
-  const [patient, setPatient] = useState("");
+  const [patient, setPatient] = useState<Patient | null>(null);
   const [phone, setPhone] = useState("");
   const [date, setDate] = useState(todayISO());
   const [dueDate, setDueDate] = useState(addDaysISO(todayISO(), 14));
@@ -83,7 +85,7 @@ export default function InvoiceForm({ number, onSave, onCancel }: InvoiceFormPro
     const validItems = parsedItems.filter((i) => i.description && i.qty > 0 && i.unitPrice > 0);
     const initialPayment = Number(payAmount) || 0;
 
-    if (!patient.trim()) return setError("Patient name is required.");
+    if (!patient) return setError("Choose a registered patient. New patients must be registered first.");
     if (validItems.length === 0) return setError("Add at least one item with a description, quantity and price.");
     if (validItems.length !== parsedItems.filter((i) => i.description || i.unitPrice).length)
       return setError("Every item needs a description, a quantity above 0 and a price above 0.");
@@ -97,7 +99,8 @@ export default function InvoiceForm({ number, onSave, onCancel }: InvoiceFormPro
     onSave({
       id: uid(),
       number,
-      patient: patient.trim(),
+      patientId: patient.id,
+      patient: patient.name,
       patientPhone: phone.trim() || undefined,
       date,
       dueDate,
@@ -116,10 +119,7 @@ export default function InvoiceForm({ number, onSave, onCancel }: InvoiceFormPro
     <Modal title={`New Invoice ${number}`} onClose={onCancel} wide>
       <form onSubmit={onSubmit} className="space-y-5">
         <div className="grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">Patient name</span>
-            <input className={inputClass} value={patient} onChange={(e) => setPatient(e.target.value)} />
-          </label>
+          <PatientPicker value={patient} onChange={(p) => { setPatient(p); if (p && !phone) setPhone(p.phone); }} autoFocus />
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Phone (optional)</span>
             <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} />

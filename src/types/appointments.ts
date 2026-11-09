@@ -23,6 +23,7 @@ export const SLOTS: string[] = Array.from({ length: 18 }, (_, i) => {
 
 export interface Appointment {
   id: string;
+  patientId: string; // registered patient (hms_patients)
   patient: string;
   phone?: string;
   doctor: string;
@@ -58,18 +59,18 @@ const day = (offset: number) => addDaysISO(todayISO(), offset);
 
 // Mock seed data (dates relative to today). Replace with a services/ call when the backend is ready.
 export const seedAppointments: Appointment[] = [
-  { id: "A-201", patient: "Chidi Okafor", phone: "0803 555 0101", doctor: "Dr. Eze", date: day(0), time: "08:00", type: "General consultation", reason: "Fever and headache", status: "Completed" },
-  { id: "A-202", patient: "Amaka Nwosu", phone: "0802 555 0102", doctor: "Dr. Obi", date: day(0), time: "08:30", type: "Antenatal", reason: "32-week review", status: "In Progress" },
-  { id: "A-203", patient: "Ifeanyi Uche", phone: "0805 555 0103", doctor: "Dr. Eze", date: day(0), time: "09:00", type: "Follow-up", reason: "Typhoid review", status: "Checked in" },
-  { id: "A-204", patient: "Ngozi Eke", phone: "0807 555 0104", doctor: "Dr. Ade", date: day(0), time: "10:00", type: "Paediatric", reason: "Child cough, 3 days", status: "Scheduled" },
-  { id: "A-205", patient: "Emeka Obi", doctor: "Dr. Obi", date: day(0), time: "11:30", type: "General consultation", reason: "Back pain", status: "Scheduled" },
-  { id: "A-206", patient: "Blessing Nnadi", phone: "0809 555 0106", doctor: "Dr. Nwankwo", date: day(0), time: "14:00", type: "Specialist", reason: "Surgical review", status: "Scheduled" },
-  { id: "A-207", patient: "Chinedu Okoro", doctor: "Dr. Eze", date: day(0), time: "15:30", type: "General consultation", status: "Scheduled" },
-  { id: "A-208", patient: "Ada Ibe", phone: "0803 555 0108", doctor: "Dr. Ade", date: day(1), time: "09:30", type: "Follow-up", reason: "Wound check", status: "Scheduled" },
-  { id: "A-209", patient: "Obinna Eze", doctor: "Dr. Obi", date: day(1), time: "11:00", type: "Antenatal", status: "Scheduled" },
-  { id: "A-210", patient: "Mary Nwafor", phone: "0802 555 0110", doctor: "Dr. Eze", date: day(1), time: "13:30", type: "General consultation", reason: "Hypertension review", status: "Scheduled" },
-  { id: "A-211", patient: "Uche Anyanwu", doctor: "Dr. Nwankwo", date: day(2), time: "10:30", type: "Specialist", status: "Scheduled" },
-  { id: "A-212", patient: "Kelechi Obi", doctor: "Dr. Ade", date: day(-1), time: "09:00", type: "Paediatric", status: "Completed" },
-  { id: "A-213", patient: "Ijeoma Ude", phone: "0805 555 0113", doctor: "Dr. Eze", date: day(-1), time: "10:30", type: "General consultation", status: "No-show" },
-  { id: "A-214", patient: "Samuel Agu", doctor: "Dr. Obi", date: day(-1), time: "14:30", type: "Follow-up", status: "Cancelled" },
+  { id: "A-201", patientId: "P-1001", patient: "Chidi Okafor", phone: "0803 555 0101", doctor: "Dr. Eze", date: day(0), time: "08:00", type: "General consultation", reason: "Fever and headache", status: "Completed" },
+  { id: "A-202", patientId: "P-1002", patient: "Amaka Nwosu", phone: "0802 555 0102", doctor: "Dr. Obi", date: day(0), time: "08:30", type: "Antenatal", reason: "32-week review", status: "In Progress" },
+  { id: "A-203", patientId: "P-1003", patient: "Ifeanyi Uche", phone: "0805 555 0103", doctor: "Dr. Eze", date: day(0), time: "09:00", type: "Follow-up", reason: "Typhoid review", status: "Checked in" },
+  { id: "A-204", patientId: "P-1004", patient: "Ngozi Eke", phone: "0807 555 0104", doctor: "Dr. Ade", date: day(0), time: "10:00", type: "Paediatric", reason: "Child cough, 3 days", status: "Scheduled" },
+  { id: "A-205", patientId: "P-1005", patient: "Emeka Obi", doctor: "Dr. Obi", date: day(0), time: "11:30", type: "General consultation", reason: "Back pain", status: "Scheduled" },
+  { id: "A-206", patientId: "P-1006", patient: "Blessing Nnadi", phone: "0809 555 0106", doctor: "Dr. Nwankwo", date: day(0), time: "14:00", type: "Specialist", reason: "Surgical review", status: "Scheduled" },
+  { id: "A-207", patientId: "P-1007", patient: "Chinedu Okoro", doctor: "Dr. Eze", date: day(0), time: "15:30", type: "General consultation", status: "Scheduled" },
+  { id: "A-208", patientId: "P-1011", patient: "Ada Ibe", phone: "0803 555 0108", doctor: "Dr. Ade", date: day(1), time: "09:30", type: "Follow-up", reason: "Wound check", status: "Scheduled" },
+  { id: "A-209", patientId: "P-1012", patient: "Obinna Eze", doctor: "Dr. Obi", date: day(1), time: "11:00", type: "Antenatal", status: "Scheduled" },
+  { id: "A-210", patientId: "P-1013", patient: "Mary Nwafor", phone: "0802 555 0110", doctor: "Dr. Eze", date: day(1), time: "13:30", type: "General consultation", reason: "Hypertension review", status: "Scheduled" },
+  { id: "A-211", patientId: "P-1010", patient: "Uche Anyanwu", doctor: "Dr. Nwankwo", date: day(2), time: "10:30", type: "Specialist", status: "Scheduled" },
+  { id: "A-212", patientId: "P-1009", patient: "Master Kelechi Obi", doctor: "Dr. Ade", date: day(-1), time: "09:00", type: "Paediatric", status: "Completed" },
+  { id: "A-213", patientId: "P-1014", patient: "Ijeoma Ude", phone: "0805 555 0113", doctor: "Dr. Eze", date: day(-1), time: "10:30", type: "General consultation", status: "No-show" },
+  { id: "A-214", patientId: "P-1015", patient: "Samuel Agu", doctor: "Dr. Obi", date: day(-1), time: "14:30", type: "Follow-up", status: "Cancelled" },
 ];

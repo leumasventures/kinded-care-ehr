@@ -12,6 +12,7 @@ import Pharmacy from "./pages/Pharmacy";
 import Nursing from "./pages/Nursing";
 import Admissions from "./pages/Admissions";
 import Billing from "./pages/Billing";
+import DutyRoster from "./pages/DutyRoster";
 import Accounts from "./pages/Account";
 import PriceList from "./pages/PriceList";
 import Reports from "./pages/Report";
@@ -19,7 +20,7 @@ import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Users from "./pages/Users";
 import Roles from "./pages/Roles";
-import AuditLog from "./pages/auditlog";
+import AuditLog from "./pages/AuditLog";
 
 export default function App() {
   return (
@@ -39,9 +40,11 @@ export default function App() {
           <Route path="/nursing" element={<ProtectedRoute module="Nursing"><Nursing /></ProtectedRoute>} />
           <Route path="/admissions" element={<ProtectedRoute module="Admissions"><Admissions /></ProtectedRoute>} />
           <Route path="/billing" element={<ProtectedRoute module="Billing"><Billing /></ProtectedRoute>} />
-          <Route path="/account" element={<ProtectedRoute module="Accounts"><Accounts /></ProtectedRoute>} />
+          {/* Every signed-in staff member can open the roster; changing it needs the Roster permissions */}
+          <Route path="/duty-roster" element={<DutyRoster />} />
+          <Route path="/accounts" element={<ProtectedRoute module="Accounts"><Accounts /></ProtectedRoute>} />
           <Route path="/price-list" element={<ProtectedRoute module="Billing"><PriceList /></ProtectedRoute>} />
-          <Route path="/report" element={<ProtectedRoute module="Reports"><Reports /></ProtectedRoute>} />
+          <Route path="/reports" element={<ProtectedRoute module="Reports"><Reports /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute module="Settings"><Settings /></ProtectedRoute>} />
 
           <Route path="/admin" element={<ProtectedRoute adminOnly><Admin /></ProtectedRoute>} />

@@ -1,4 +1,4 @@
-import { addDaysISO, seedInvoices, todayISO, type PaymentMethod } from "./billing";
+import { addDaysISO, loadInvoices, todayISO, type PaymentMethod } from "./billing";
 
 // ---------- Money accounts (cash, bank, POS) ----------
 export const ACCOUNT_KINDS = ["Cash", "Bank", "POS / Mobile money"] as const;
@@ -175,7 +175,7 @@ const methodAccount = (m: PaymentMethod) => (m === "Cash" ? ACC_CASH : m === "PO
 
 // TODO: replace with a services/ call that returns invoice payments from the backend.
 export function billingTxns(): Txn[] {
-  return seedInvoices.flatMap((inv) =>
+  return loadInvoices().flatMap((inv) =>
     inv.payments.map<Txn>((p) => ({
       id: `bill-${inv.id}-${p.id}`,
       date: p.date,

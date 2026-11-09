@@ -1,9 +1,19 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { CalendarCheck, ChevronLeft, ChevronRight, Pencil, Plus, Search, UserX, X } from "lucide-react";
+import { Link } from "react-router-dom";
+import { CalendarCheck, ChevronLeft, ChevronRight, FileText, FolderOpen, HeartPulse, Pencil, Plus, Search, UserX, X } from "lucide-react";
+import { STORE_KEYS, usePersisted } from "../services/store";
 import { useAuth } from "../context/AuthContext";
+import ConsultationNote from "../components/patients/ConsultationNote";
+import TriageForm from "../components/patients/TriageForm";
+import { loadLabOrders } from "../types/laboratory";
+import { loadTriage } from "../types/triage";
+import { loadRecords } from "../types/records";
+import PatientPicker from "../components/patients/PatientPicker";
+import { loadPatients, type Patient } from "../types/patients";
 import Modal from "../components/billing/Modal";
 import { addDaysISO, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
+import { addCharges, priceOfService } from "../services/charges";
 import { DOCTORS } from "../types/admissions";
 import {
   SLOTS,
@@ -58,7 +68,7 @@ function AppointmentForm({
   onClose: () => void;
 }) {
   const today = todayISO();
-  const [patient, setPatient] = useState(appointment?.patient ?? "");
+  const [patient, setPatient] = useState<Patient | null>(() => loadPatients().find((p) => p.id === appointment?.patientId) ?? null);
   const [phone, setPhone] = useState(appointment?.phone ?? "");
   const [doctor, setDoctor] = useState(appointment?.doctor ?? DOCTORS[0]);
   const [date, setDate] = useState(appointment?.date ?? (presetDate < today ? today : presetDate));
@@ -77,7 +87,7 @@ function AppointmentForm({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!patient.trim()) return setError("Patient name is required.");
+    if (!patient) return setError("Choose a registered patient. New patients must be registered first.");
     if (date < today) return setError("Choose today or a future date.");
     if (!time) return setError("No free slots for this doctor on that day. Pick another date or doctor.");
     if (isBooked(appointments, doctor, date, time, appointment?.id)) return setError("That slot has just been taken.");
@@ -85,7 +95,8 @@ function AppointmentForm({
     // TODO: POST/PUT /appointments via a services/ call
     onSave({
       id: appointment?.id ?? nextAppointmentId(appointments),
-      patient: patient.trim(),
+      patientId: patient.id,
+      patient: patient.name,
       phone: phone.trim() || undefined,
       doctor,
       date,
@@ -100,10 +111,9 @@ function AppointmentForm({
     <Modal title={appointment ? `Reschedule ${appointment.id}` : "Book Appointment"} onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <label className="block text-sm">
-            <span className="mb-1 block text-slate-600">Patient name</span>
-            <input className={inputClass} value={patient} onChange={(e) => setPatient(e.target.value)} autoFocus />
-          </label>
+          <div className="col-span-2">
+            <PatientPicker value={patient} onChange={(p) => { setPatient(p); if (p && !phone) setPhone(p.phone); }} autoFocus={!appointment} />
+          </div>
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Phone (optional)</span>
             <input className={inputClass} value={phone} onChange={(e) => setPhone(e.target.value)} />
@@ -173,8 +183,14 @@ function AppointmentForm({
 
 export default function Appointments() {
   const { can } = useAuth();
+  const canNote = can("Patients", "create"); // doctors write consultation notes into the patient chart
+  const canTriage = can("Nursing", "create") || can("Appointments", "edit");
+  const [triageFor, setTriageFor] = useState<string | null>(null);
+  const [noteFor, setNoteFor] = useState<string | null>(null);
+  const [noteTick, setNoteTick] = useState(0);
+  const [flash, setFlash] = useState("");
   const today = todayISO();
-  const [appointments, setAppointments] = useState<Appointment[]>(seedAppointments);
+  const [appointments, setAppointments] = usePersisted<Appointment[]>(STORE_KEYS.appointments, () => seedAppointments);
   const [scope, setScope] = useState<"day" | "upcoming" | "all">("day");
   const [date, setDate] = useState(today);
   const [doctorFilter, setDoctorFilter] = useState("all");
@@ -214,9 +230,25 @@ export default function Appointments() {
 
   const editing = modal && modal !== "book" ? appointments.find((a) => a.id === modal) : undefined;
 
+  const say = (m: string) => {
+    setFlash(m);
+    window.setTimeout(() => setFlash(""), 4500);
+  };
+
   const setStatus = (id: string, status: AppointmentStatus) => {
     // TODO: PUT /appointments/:id/status via a services/ call
     setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
+    const appt = appointments.find((a) => a.id === id);
+    if (status === "Completed" && appt && appt.status !== "Completed") {
+      // A completed visit is billed automatically at the Price List fee.
+      const priceName = VISIT_TYPES.find((v) => v.name === appt.type)?.priceName ?? "";
+      const fee = priceOfService(priceName);
+      const person = loadPatients().find((p) => p.id === appt.patientId);
+      if (fee && person) {
+        const r = addCharges(person, `appt:${appt.id}`, [{ description: priceName, qty: 1, unitPrice: fee }], `${appt.type} visit ${appt.id}`);
+        if (r) say(`${formatNaira(r.amount)} charged to invoice ${r.invoiceNumber}.`);
+      } else if (!fee) say(`No Price List fee for "${appt.type}". Add it in Billing manually.`);
+    }
   };
 
   const cancel = (a: Appointment) => {
@@ -230,6 +262,23 @@ export default function Appointments() {
   };
 
   const nowTime = nowHHmm();
+  // Visits that already have a consultation note (re-read after each save).
+  const noted = useMemo(() => new Set(loadRecords().notes.filter((n) => n.appointmentId).map((n) => n.appointmentId)), [noteTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const triaged = useMemo(() => new Set(loadTriage().map((t) => t.appointmentId)), [noteTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Lab orders raised from each visit, so the doctor can see when results are back.
+  const labsByVisit = useMemo(() => {
+    const m = new Map<string, { open: number; ready: number }>();
+    for (const o of loadLabOrders()) {
+      if (!o.appointmentId || o.status === "Cancelled") continue;
+      const x = m.get(o.appointmentId) ?? { open: 0, ready: 0 };
+      if (o.status === "Ready") x.ready++;
+      else x.open++;
+      m.set(o.appointmentId, x);
+    }
+    return m;
+  }, [noteTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const triageTarget = triageFor ? appointments.find((a) => a.id === triageFor) : undefined;
+  const noteTarget = noteFor ? appointments.find((a) => a.id === noteFor) : undefined;
 
   return (
     <div className="space-y-6">
@@ -359,6 +408,12 @@ export default function Appointments() {
                         <span className="text-blue-600">{a.id}</span>
                         {a.reason ? ` · ${a.reason}` : ""}
                       </p>
+                      {labsByVisit.get(a.id) && (
+                        <p className="mt-0.5 text-xs">
+                          {labsByVisit.get(a.id)!.ready > 0 && <span className="mr-2 rounded bg-emerald-50 px-1.5 py-0.5 text-emerald-700">Lab results ready</span>}
+                          {labsByVisit.get(a.id)!.open > 0 && <span className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-700">Lab pending</span>}
+                        </p>
+                      )}
                     </td>
                     <td className="px-5 py-3 text-slate-600">{a.doctor}</td>
                     <td className="px-5 py-3 text-slate-600">{a.type}</td>
@@ -368,8 +423,34 @@ export default function Appointments() {
                       {late && <span className="ml-2 rounded bg-amber-50 px-1.5 py-0.5 text-xs text-amber-700">Late</span>}
                     </td>
                     <td className="px-5 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {canTriage && (a.status === "Checked in" || a.status === "In Progress") && (
+                          <button
+                            onClick={() => setTriageFor(a.id)}
+                            title={triaged.has(a.id) ? "Vitals recorded. Record again" : "Record vitals"}
+                            aria-label={`Record vitals for ${a.patient}`}
+                            className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium ${triaged.has(a.id) ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "bg-rose-50 text-rose-700 hover:bg-rose-100"}`}
+                          >
+                            <HeartPulse size={13} /> Vitals
+                          </button>
+                        )}
+                        {canNote && (a.status === "Checked in" || a.status === "In Progress" || a.status === "Completed") && (
+                          <button
+                            onClick={() => setNoteFor(a.id)}
+                            title={noted.has(a.id) ? "Consultation note written. Add another" : "Write consultation note"}
+                            aria-label={`Write consultation note for ${a.patient}`}
+                            className={`flex items-center gap-1 rounded-md px-2.5 py-1 text-xs font-medium ${noted.has(a.id) ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-100" : "bg-amber-50 text-amber-800 hover:bg-amber-100"}`}
+                          >
+                            <FileText size={13} /> {noted.has(a.id) ? "Noted" : "Note"}
+                          </button>
+                        )}
+                        {can("Patients", "view") && (
+                          <Link to={`/patients?open=${a.patientId}`} title="Open patient chart" aria-label={`Open ${a.patient}'s chart`} className="rounded-md p-1.5 text-slate-500 hover:bg-slate-100 hover:text-slate-700">
+                            <FolderOpen size={15} />
+                          </Link>
+                        )}
                       {can("Appointments", "edit") && (
-                        <div className="flex items-center justify-end gap-1">
+                        <>
                           {step && (
                             <button
                               onClick={() => setStatus(a.id, step.to)}
@@ -393,8 +474,9 @@ export default function Appointments() {
                               <X size={15} />
                             </button>
                           )}
-                        </div>
+                        </>
                       )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -417,6 +499,30 @@ export default function Appointments() {
       {modal === "book" && (
         <AppointmentForm appointment={null} appointments={appointments} presetDate={scope === "day" ? date : today} fees={fees} onSave={save} onClose={() => setModal(null)} />
       )}
+      {triageTarget && (
+        <TriageForm
+          appointment={triageTarget}
+          onClose={() => setTriageFor(null)}
+          onSaved={() => {
+            setTriageFor(null);
+            setNoteTick((n) => n + 1);
+            say(`Vitals saved. The doctor will see them in the consultation note.`);
+          }}
+        />
+      )}
+      {noteTarget && (
+        <ConsultationNote
+          appointment={noteTarget}
+          onClose={() => setNoteFor(null)}
+          onSaved={(done, summary) => {
+            if (done && noteTarget.status !== "Completed") setStatus(noteTarget.id, "Completed");
+            setNoteFor(null);
+            setNoteTick((n) => n + 1);
+            say(summary);
+          }}
+        />
+      )}
+      {flash && <p role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-slate-800 px-4 py-2 text-sm text-white shadow-lg">{flash}</p>}
       {editing && <AppointmentForm appointment={editing} appointments={appointments} presetDate={editing.date} fees={fees} onSave={save} onClose={() => setModal(null)} />}
     </div>
   );

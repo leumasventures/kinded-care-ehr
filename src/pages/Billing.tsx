@@ -1,5 +1,6 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Plus, Printer, Search, Wallet } from "lucide-react";
+import { STORE_KEYS, usePersisted } from "../services/store";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
 import InvoiceForm from "../components/billing/InvoiceForm";
@@ -102,7 +103,7 @@ function PaymentModal({
 
 export default function Billing() {
   const { can } = useAuth();
-  const [invoices, setInvoices] = useState<Invoice[]>(seedInvoices);
+  const [invoices, setInvoices] = usePersisted<Invoice[]>(STORE_KEYS.invoices, () => seedInvoices);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"All" | InvoiceStatus>("All");
   const [creating, setCreating] = useState(false);
@@ -236,7 +237,7 @@ export default function Billing() {
                         {i.number}
                       </button>
                     </td>
-                    <td className="px-5 py-3 text-slate-800">{i.patient}</td>
+                    <td className="px-5 py-3 text-slate-800">{i.patient}{i.items.some((x) => x.source) && <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500" title="Some lines were added automatically from visits, lab orders, pharmacy or discharge">Auto charges</span>}</td>
                     <td className="px-5 py-3 text-slate-600">{formatDate(i.date)}</td>
                     <td className="px-5 py-3 text-slate-600">{formatDate(i.dueDate)}</td>
                     <td className="px-5 py-3 text-right text-slate-600">{formatNaira(calcTotals(i).total)}</td>

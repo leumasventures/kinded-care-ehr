@@ -41,6 +41,7 @@ export interface DispenseLine {
 export interface Dispensing {
   id: string;
   date: string;
+  patientId: string; // registered patient (hms_patients)
   patient: string;
   prescriber: string;
   lines: DispenseLine[];
@@ -115,7 +116,7 @@ export const seedDrugs: Drug[] = rows.map(([name, category, stock, reorderAt, ex
 
 export const seedDispensing: Dispensing[] = [
   {
-    id: "RX-1001", date: day(0), patient: "Chidi Okafor", prescriber: "Dr. Eze",
+    id: "RX-1001", date: day(0), patientId: "P-1001", patient: "Chidi Okafor", prescriber: "Dr. Eze",
     lines: [
       { sku: "D-001", name: "Paracetamol 500mg tablets", qty: 2, unitPrice: priceOf("Paracetamol 500mg tablets") },
       { sku: "D-009", name: "Artemether/Lumefantrine (antimalarial)", qty: 1, unitPrice: priceOf("Artemether/Lumefantrine (antimalarial)") },
@@ -123,7 +124,7 @@ export const seedDispensing: Dispensing[] = [
     total: 2 * priceOf("Paracetamol 500mg tablets") + priceOf("Artemether/Lumefantrine (antimalarial)"),
   },
   {
-    id: "RX-1002", date: day(-1), patient: "Ngozi Eke", prescriber: "Dr. Ade",
+    id: "RX-1002", date: day(-1), patientId: "P-1004", patient: "Ngozi Eke", prescriber: "Dr. Ade",
     lines: [{ sku: "D-015", name: "Oral rehydration salts (ORS)", qty: 4, unitPrice: priceOf("Oral rehydration salts (ORS)") }],
     total: 4 * priceOf("Oral rehydration salts (ORS)"),
   },

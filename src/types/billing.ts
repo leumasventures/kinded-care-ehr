@@ -20,6 +20,7 @@ export interface Payment {
 export interface Invoice {
   id: string;
   number: string;
+  patientId: string; // registered patient (hms_patients)
   patient: string;
   patientPhone?: string;
   date: string; // YYYY-MM-DD
@@ -122,7 +123,7 @@ export const seedInvoices: Invoice[] = [
   {
     id: "i-1",
     number: "INV-1001",
-    patient: "Chidi Okafor",
+    patientId: "P-1001", patient: "Chidi Okafor",
     patientPhone: "0803 555 0101",
     date: "2026-10-27",
     dueDate: "2026-11-10",
@@ -137,7 +138,7 @@ export const seedInvoices: Invoice[] = [
   {
     id: "i-2",
     number: "INV-1002",
-    patient: "Amaka Nwosu",
+    patientId: "P-1002", patient: "Amaka Nwosu",
     patientPhone: "0802 555 0102",
     date: "2026-10-26",
     dueDate: "2026-11-09",
@@ -154,7 +155,7 @@ export const seedInvoices: Invoice[] = [
   {
     id: "i-3",
     number: "INV-1003",
-    patient: "Ifeanyi Uche",
+    patientId: "P-1003", patient: "Ifeanyi Uche",
     date: "2026-10-10",
     dueDate: "2026-10-17",
     items: [{ id: "l-6", description: "General ward (2 days)", qty: 2, unitPrice: 15000 }],
@@ -165,7 +166,7 @@ export const seedInvoices: Invoice[] = [
   {
     id: "i-4",
     number: "INV-1004",
-    patient: "Ngozi Eke",
+    patientId: "P-1004", patient: "Ngozi Eke",
     date: "2026-10-25",
     dueDate: "2026-11-08",
     items: [

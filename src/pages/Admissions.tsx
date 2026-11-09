@@ -1,7 +1,16 @@
 import { useMemo, useState, type FormEvent } from "react";
-import { ArrowRightLeft, LogOut, Plus, Search } from "lucide-react";
+import { ArrowRightLeft, FileText, LogOut, Plus, Search } from "lucide-react";
+import { STORE_KEYS, usePersisted } from "../services/store";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
+import PatientPicker from "../components/patients/PatientPicker";
+import DocumentForm from "../components/documents/DocumentForm";
+import DocumentPrint from "../components/documents/DocumentPrint";
+import type { IssuedDoc } from "../types/documents";
+import { canPrescribe } from "../types/records";
+import { loadPatients, type Patient } from "../types/patients";
+import { addCharges } from "../services/charges";
+
 import { formatDate, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
 import {
@@ -74,7 +83,7 @@ function AdmitForm({
   onSave: (a: Admission) => void;
   onClose: () => void;
 }) {
-  const [patient, setPatient] = useState("");
+  const [patient, setPatient] = useState<Patient | null>(null);
   const [ward, setWard] = useState<WardName>(presetWard ?? WARD_NAMES[0]);
   const [chosenBed, setChosenBed] = useState(presetBed ?? "");
   const [doctor, setDoctor] = useState(DOCTORS[0]);
@@ -87,14 +96,16 @@ function AdmitForm({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!patient.trim()) return setError("Patient name is required.");
+    if (!patient) return setError("Choose a registered patient. New patients must be registered first.");
+    if (admissions.some((a) => a.status === "Admitted" && a.patientId === patient.id)) return setError(`${patient.name} is already admitted.`);
     if (!diagnosis.trim()) return setError("Enter the reason for admission / diagnosis.");
     if (!bed) return setError("Choose a free bed.");
     if (date > todayISO()) return setError("Admission date can't be in the future.");
     // TODO: POST /admissions via a services/ call
     onSave({
       id: nextAdmissionId(admissions),
-      patient: patient.trim(),
+      patientId: patient.id,
+      patient: patient.name,
       ward,
       bed,
       admittedOn: date,
@@ -107,10 +118,7 @@ function AdmitForm({
   return (
     <Modal title="Admit Patient" onClose={onClose}>
       <form onSubmit={submit} className="space-y-4">
-        <label className="block text-sm">
-          <span className="mb-1 block text-slate-600">Patient name</span>
-          <input className={inputClass} value={patient} onChange={(e) => setPatient(e.target.value)} autoFocus />
-        </label>
+        <PatientPicker value={patient} onChange={setPatient} autoFocus showAllergies />
         <div className="grid grid-cols-2 gap-4">
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Ward</span>
@@ -247,7 +255,7 @@ function DischargeForm({
           {rate !== undefined && (
             <>
               {" "}
-              · Bed charges: <span className="font-medium text-slate-800">{formatNaira(days * rate)}</span> — add them to the patient's invoice in Billing.
+              · Bed charges: <span className="font-medium text-slate-800">{formatNaira(days * rate)}</span>, added to the patient's invoice automatically.
             </>
           )}
         </p>
@@ -265,8 +273,11 @@ type ModalState =
   | null;
 
 export default function Admissions() {
-  const { can } = useAuth();
-  const [admissions, setAdmissions] = useState<Admission[]>(seedAdmissions);
+  const { can, user } = useAuth();
+  const [summaryFor, setSummaryFor] = useState<Admission | null>(null);
+  const [issuedDoc, setIssuedDoc] = useState<IssuedDoc | null>(null);
+  const [toast, setToast] = useState("");
+  const [admissions, setAdmissions] = usePersisted<Admission[]>(STORE_KEYS.admissions, () => seedAdmissions);
   const [tab, setTab] = useState<"current" | "discharged">("current");
   const [wardFilter, setWardFilter] = useState<"all" | WardName>("all");
   const [query, setQuery] = useState("");
@@ -322,12 +333,24 @@ export default function Admissions() {
         a.id === discharging.id ? { ...a, status: "Discharged", dischargedOn: date, outcome, dischargeNotes: notes || undefined } : a
       )
     );
+    // Bed-days are billed on discharge: days x the ward's daily rate from the Price List.
+    const rate = rates[discharging.ward];
+    const person = loadPatients().find((p) => p.id === discharging.patientId);
+    if (rate && person) {
+      const days = stayDays({ ...discharging, dischargedOn: date });
+      const r = addCharges(person, `adm:${discharging.id}`, [{ description: `${discharging.ward} bed, per day (${discharging.bed})`, qty: days, unitPrice: rate }], `${days} day stay, admission ${discharging.id}`);
+      if (r) {
+        setToast(`${formatNaira(r.amount)} bed charges added to invoice ${r.invoiceNumber}.`);
+        window.setTimeout(() => setToast(""), 4500);
+      }
+    }
     setModal(null);
     setTab("discharged");
   };
 
   return (
     <div className="space-y-6">
+      {toast && <p role="status" className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-lg bg-slate-800 px-4 py-2 text-sm text-white shadow-lg">{toast}</p>}
       {/* Ward cards double as filters */}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {wardStats.map((w) => (
@@ -483,7 +506,14 @@ export default function Admissions() {
                     </td>
                     <td className="px-5 py-3 text-right text-slate-800">{rate !== undefined ? formatNaira(days * rate) : "—"}</td>
                     {tab === "discharged" ? (
-                      <td className="px-5 py-3 text-slate-600">{a.outcome ?? "—"}</td>
+                      <td className="px-5 py-3 text-slate-600">
+                        {a.outcome ?? "—"}
+                        {canPrescribe(user) && (
+                          <button onClick={() => setSummaryFor(a)} className="ml-3 inline-flex items-center gap-1 rounded-md bg-blue-50 px-2 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100">
+                            <FileText size={12} /> Summary
+                          </button>
+                        )}
+                      </td>
                     ) : (
                       <td className="px-5 py-3">
                         {can("Admissions", "edit") && (
@@ -530,6 +560,19 @@ export default function Admissions() {
         <AdmitForm admissions={admissions} presetWard={modal.ward} presetBed={modal.bed} onSave={admit} onClose={() => setModal(null)} />
       )}
       {transferring && <TransferForm admission={transferring} admissions={admissions} onSave={transfer} onClose={() => setModal(null)} />}
+      {summaryFor && loadPatients().find((p) => p.id === summaryFor.patientId) && (
+        <DocumentForm
+          patient={loadPatients().find((p) => p.id === summaryFor.patientId)!}
+          type="Discharge summary"
+          admissionId={summaryFor.id}
+          onClose={() => setSummaryFor(null)}
+          onIssued={(d) => {
+            setSummaryFor(null);
+            setIssuedDoc(d);
+          }}
+        />
+      )}
+      {issuedDoc && <DocumentPrint doc={issuedDoc} onClose={() => setIssuedDoc(null)} />}
       {discharging && <DischargeForm admission={discharging} rate={rates[discharging.ward]} onSave={discharge} onClose={() => setModal(null)} />}
     </div>
   );
