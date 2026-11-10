@@ -1,3 +1,4 @@
+import { STORE_KEYS, loadStore } from "../services/store";
 import { addDaysISO, todayISO } from "./billing";
 import { defaultPriceList } from "./pricing";
 
@@ -30,6 +31,7 @@ export interface LabOrder {
   tests: LabTest[];
   clinicalNote?: string;
   reportedOn?: string;
+  appointmentId?: string; // set when the doctor ordered it from a consultation
 }
 
 export const orderTotal = (o: LabOrder) => o.tests.reduce((s, t) => s + t.price, 0);
@@ -60,3 +62,6 @@ export const seedLabOrders: LabOrder[] = [
   { id: "L-506", patientId: "P-1008", patient: "Baby Adaeze Eze", requestedBy: "Dr. Ade", date: day(-1), priority: "Urgent", status: "Processing", tests: [t("Malaria parasite (MP)"), t("Packed cell volume (PCV)")] },
   { id: "L-507", patientId: "P-1013", patient: "Mary Nwafor", requestedBy: "Dr. Obi", date: day(-2), priority: "Routine", status: "Cancelled", tests: [t("Lipid profile")] },
 ];
+
+/** Live data (survives reloads). Pages read this instead of the demo seed. */
+export const loadLabOrders = (): LabOrder[] => loadStore(STORE_KEYS.labOrders, () => seedLabOrders);

@@ -1,3 +1,4 @@
+import { STORE_KEYS, loadStore } from "../services/store";
 import { addDaysISO, todayISO } from "./billing";
 import { defaultPriceList } from "./pricing";
 
@@ -44,6 +45,7 @@ export interface Dispensing {
   patientId: string; // registered patient (hms_patients)
   patient: string;
   prescriber: string;
+  rxIds?: string[]; // prescriptions from the chart that this dispensing fulfilled
   lines: DispenseLine[];
   total: number;
 }
@@ -129,3 +131,7 @@ export const seedDispensing: Dispensing[] = [
     total: 4 * priceOf("Oral rehydration salts (ORS)"),
   },
 ];
+
+/** Live data (survives reloads). Pages read this instead of the demo seed. */
+export const loadDispensing = (): Dispensing[] => loadStore(STORE_KEYS.dispensing, () => seedDispensing);
+export const loadDrugs = (): Drug[] => loadStore(STORE_KEYS.drugs, () => seedDrugs);

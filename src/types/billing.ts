@@ -1,3 +1,4 @@
+import { STORE_KEYS, loadStore } from "../services/store";
 export type PaymentMethod = "Cash" | "Bank Transfer" | "POS" | "Cheque" | "HMO / Insurance";
 
 export const PAYMENT_METHODS: PaymentMethod[] = ["Cash", "Bank Transfer", "POS", "Cheque", "HMO / Insurance"];
@@ -7,6 +8,8 @@ export interface LineItem {
   description: string;
   qty: number;
   unitPrice: number;
+  /** Set on lines added automatically (e.g. "appt:A-201"), so the same visit is never charged twice. */
+  source?: string;
 }
 
 export interface Payment {
@@ -178,3 +181,6 @@ export const seedInvoices: Invoice[] = [
     payments: [{ id: "p-3", date: "2026-10-25", amount: 6500, method: "Cash" }],
   },
 ];
+
+/** Live data (survives reloads). Pages read this instead of the demo seed. */
+export const loadInvoices = (): Invoice[] => loadStore(STORE_KEYS.invoices, () => seedInvoices);

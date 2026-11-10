@@ -22,6 +22,11 @@ export interface Patient {
   kinRelation: string;
   kinPhone: string;
   notes?: string;
+  /** Insurer or HMO name and the patient's enrolment / member number (for claims). */
+  payerName?: string;
+  memberId?: string;
+  /** Ids of duplicate registrations that were merged into this one. */
+  mergedFrom?: string[];
   registeredOn: string; // YYYY-MM-DD
 }
 

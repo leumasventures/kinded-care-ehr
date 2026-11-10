@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { AlertTriangle, Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { AlertTriangle, Eye, GitMerge, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { logAudit } from "../services/audit";
 import Modal from "../components/billing/Modal";
 import PatientChart from "../components/patients/PatientChart";
+import MergeDialog from "../components/patients/MergeDialog";
 import PatientDocuments from "../components/documents/PatientDocuments";
 import { balanceOf, formatDate, formatNaira, loadInvoices, statusOf, todayISO } from "../types/billing";
 import { loadAppointments } from "../types/appointments";
@@ -19,6 +20,7 @@ import {
   RELATIONSHIPS,
   ageLabel,
   allergyList,
+  findDuplicates,
   loadPatients,
   nextPatientId,
   savePatients,
@@ -61,6 +63,8 @@ function PatientForm({
   const [bloodGroup, setBloodGroup] = useState<BloodGroup>(patient?.bloodGroup ?? "Unknown");
   const [genotype, setGenotype] = useState<Genotype>(patient?.genotype ?? "Unknown");
   const [payer, setPayer] = useState<Payer>(patient?.payer ?? "Self-pay");
+  const [payerName, setPayerName] = useState(patient?.payerName ?? "");
+  const [memberId, setMemberId] = useState(patient?.memberId ?? "");
   const [allergies, setAllergies] = useState(patient?.allergies ?? "");
   const [kinName, setKinName] = useState(patient?.kinName ?? "");
   const [kinRelation, setKinRelation] = useState(patient?.kinRelation ?? RELATIONSHIPS[0]);
@@ -75,8 +79,12 @@ function PatientForm({
     if (dob > todayISO()) return setError("Date of birth can't be in the future.");
     if (patients.some((x) => x.id !== patient?.id && same(x.name, name) && x.dob === dob))
       return setError("A patient with this name and date of birth is already registered.");
+    if (payer !== "Self-pay" && !payerName.trim()) return setError("Enter the insurer or HMO name for this payer, or choose Self-pay.");
+    const samePhone = findDuplicates(patients, { name: "", dob: "", phone }, patient?.id).find((x) => !same(x.name, name));
+    if (samePhone && !window.confirm(`${samePhone.name} (${samePhone.id}) is already registered with this phone number. Register ${name.trim()} as a separate patient?`)) return;
     // TODO: POST/PUT /patients via a services/ call
     onSave({
+      ...patient,
       id: patient?.id ?? nextPatientId(patients),
       name: name.trim(),
       dob,
@@ -86,6 +94,8 @@ function PatientForm({
       bloodGroup,
       genotype,
       payer,
+      payerName: payer === "Self-pay" ? undefined : payerName.trim(),
+      memberId: payer === "Self-pay" ? undefined : memberId.trim() || undefined,
       allergies: allergies.trim(),
       kinName: kinName.trim(),
       kinRelation,
@@ -141,6 +151,16 @@ function PatientForm({
               ))}
             </select>
           </Field>
+          {payer !== "Self-pay" && (
+            <>
+              <Field label="Insurer / HMO / company name" className="sm:col-span-2">
+                <input className={inputClass} value={payerName} onChange={(e) => setPayerName(e.target.value)} placeholder="e.g. Hygeia HMO, NHIA, Shell Nigeria" />
+              </Field>
+              <Field label="Member / enrolment no.">
+                <input className={inputClass} value={memberId} onChange={(e) => setMemberId(e.target.value)} />
+              </Field>
+            </>
+          )}
           <Field label="Known allergies (comma separated, blank if none)" className="sm:col-span-3">
             <input className={inputClass} value={allergies} onChange={(e) => setAllergies(e.target.value)} placeholder="e.g. Penicillin, Eggs" />
           </Field>
@@ -235,7 +255,7 @@ function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => 
           <Detail label="Date of birth" value={formatDate(patient.dob)} />
           <Detail label="Phone" value={patient.phone} />
           <Detail label="Blood group / genotype" value={`${patient.bloodGroup} · ${patient.genotype}`} />
-          <Detail label="Payer" value={patient.payer} />
+          <Detail label="Payer" value={patient.payer === "Self-pay" ? "Self-pay" : `${patient.payer}${patient.payerName ? ` · ${patient.payerName}` : ""}${patient.memberId ? ` (${patient.memberId})` : ""}`} />
           <Detail label="Registered" value={formatDate(patient.registeredOn)} />
           <Detail label="Address" value={patient.address} />
           <Detail label="Next of kin" value={patient.kinName ? `${patient.kinName} (${patient.kinRelation})` : ""} />
@@ -315,10 +335,11 @@ function PatientDetail({ patient, onClose }: { patient: Patient; onClose: () => 
   );
 }
 
-type ModalState = { type: "new" } | { type: "edit"; id: string } | { type: "view"; id: string } | null;
+type ModalState = { type: "new" } | { type: "edit"; id: string } | { type: "view"; id: string } | { type: "merge"; id: string } | null;
 
 export default function Patients() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const [notice, setNotice] = useState("");
   const [patients, setPatients] = useState<Patient[]>(loadPatients);
   const [params, setParams] = useSearchParams();
   const [query, setQuery] = useState("");
@@ -383,6 +404,7 @@ export default function Patients() {
 
   return (
     <div className="space-y-4">
+      {notice && <p role="status" className="rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-800">{notice}</p>}
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((s) => (
           <div key={s.label} className="rounded-xl border border-slate-200 bg-white p-5">
@@ -477,6 +499,11 @@ export default function Patients() {
                           <Pencil size={15} />
                         </button>
                       )}
+                      {user?.isAdmin && (
+                        <button onClick={() => setModal({ type: "merge", id: p.id })} title="Merge duplicate" aria-label={`Merge a duplicate of ${p.name}`} className="rounded-md p-1.5 text-slate-500 hover:bg-violet-50 hover:text-violet-600">
+                          <GitMerge size={15} />
+                        </button>
+                      )}
                       {can("Patients", "delete") && (
                         <button onClick={() => remove(p)} title="Delete" aria-label={`Delete ${p.name}`} className="rounded-md p-1.5 text-slate-500 hover:bg-rose-50 hover:text-rose-600">
                           <Trash2 size={15} />
@@ -500,6 +527,18 @@ export default function Patients() {
 
       {modal?.type === "new" && <PatientForm patient={null} patients={patients} onSave={save} onClose={() => closeModal()} />}
       {modal?.type === "edit" && target && <PatientForm patient={target} patients={patients} onSave={save} onClose={() => closeModal()} />}
+      {modal?.type === "merge" && target && (
+        <MergeDialog
+          patient={target}
+          onClose={closeModal}
+          onDone={(m) => {
+            setPatients(loadPatients());
+            closeModal();
+            setNotice(m);
+            window.setTimeout(() => setNotice(""), 6000);
+          }}
+        />
+      )}
       {modal?.type === "view" && target && <PatientDetail patient={target} onClose={() => closeModal()} />}
     </div>
   );

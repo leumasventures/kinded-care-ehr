@@ -1,3 +1,4 @@
+import { STORE_KEYS, loadStore } from "../services/store";
 import { addDaysISO, todayISO } from "./billing";
 
 export const STATUSES = ["Scheduled", "Checked in", "In Progress", "Completed", "Cancelled", "No-show"] as const;
@@ -74,3 +75,6 @@ export const seedAppointments: Appointment[] = [
   { id: "A-213", patientId: "P-1014", patient: "Ijeoma Ude", phone: "0805 555 0113", doctor: "Dr. Eze", date: day(-1), time: "10:30", type: "General consultation", status: "No-show" },
   { id: "A-214", patientId: "P-1015", patient: "Samuel Agu", doctor: "Dr. Obi", date: day(-1), time: "14:30", type: "Follow-up", status: "Cancelled" },
 ];
+
+/** Live data (survives reloads). Pages read this instead of the demo seed. */
+export const loadAppointments = (): Appointment[] => loadStore(STORE_KEYS.appointments, () => seedAppointments);

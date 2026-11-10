@@ -17,6 +17,7 @@ export default function PatientPicker({
   autoFocus = false,
   disabled = false,
   showAllergies = false,
+  exclude,
 }: {
   value: Patient | null;
   onChange: (p: Patient | null) => void;
@@ -25,6 +26,8 @@ export default function PatientPicker({
   disabled?: boolean;
   /** Show the patient's known allergies under the field (clinical forms). */
   showAllergies?: boolean;
+  /** Hide this patient id from the results (e.g. when merging, so a record can't be picked against itself). */
+  exclude?: string;
 }) {
   const patients = useMemo(() => loadPatients(), []);
   const [query, setQuery] = useState("");
@@ -38,10 +41,11 @@ export default function PatientPicker({
   const results = useMemo(
     () =>
       patients
+        .filter((p) => p.id !== exclude)
         .filter((p) => !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || (digits.length >= 3 && p.phone.replace(/\D/g, "").includes(digits)))
         .sort((a, b) => a.name.localeCompare(b.name))
         .slice(0, 8),
-    [patients, q, digits]
+    [patients, q, digits, exclude]
   );
 
   useEffect(() => {

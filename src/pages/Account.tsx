@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { balanceOf, formatDate, formatNaira, loadInvoices, todayISO } from "../types/billing";
-import { isLive, lastMonths, monthLabel, monthOf, round2, type Txn } from "../types/accounts";
+import { isLive, lastMonths, monthLabel, monthOf, round2, type Txn } from "../types/account";
 import { useLedger, type Ledger } from "../components/accounts/useLedger";
 import Transactions from "../components/accounts/Transactions";
 import MoneyAccounts from "../components/accounts/MoneyAccounts";

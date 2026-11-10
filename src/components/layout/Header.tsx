@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, Bell, Search, LogOut } from "lucide-react";
 import { navItems } from "./Sidebar";
 import { useAuth } from "../../context/AuthContext";
+import { EmergencyButton } from "./EmergencyAccess";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -37,6 +38,7 @@ export default function Header({ onMenuClick }: HeaderProps) {
       <h1 className="text-lg font-semibold text-slate-800">{current}</h1>
 
       <div className="ml-auto flex items-center gap-3">
+        <EmergencyButton />
         <div className="relative hidden md:block">
           <Search
             size={16}

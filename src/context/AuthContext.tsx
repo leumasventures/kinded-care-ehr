@@ -2,10 +2,12 @@ import {
   createContext,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
   useState,
   type ReactNode,
 } from "react";
+import { EMERGENCY_MINUTES, loadGrant, saveGrant, type EmergencyGrant } from "../services/emergency";
 import { logAudit } from "../services/audit";
 import {
   effectivePermissions,
@@ -32,6 +34,10 @@ interface AuthContextValue {
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   can: (module: Module, action?: Action) => boolean;
+  /** Time-limited, read-only access to patient records, granted after giving a reason. */
+  emergency: EmergencyGrant | null;
+  startEmergency: (reason: string) => void;
+  endEmergency: (why?: "ended" | "expired") => void;
 }
 
 const STORAGE_KEY = "hms_auth_user";
@@ -49,6 +55,7 @@ function loadStoredUser(): AuthUser | null {
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(loadStoredUser);
+  const [emergency, setEmergency] = useState<EmergencyGrant | null>(() => loadGrant(loadStoredUser()?.id));
 
   const attemptLogin = useCallback(async (email: string, password: string) => {
     // MOCK LOGIN (development only): matches a seeded user by email and accepts
@@ -115,7 +122,48 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [attemptLogin]
   );
 
+  const endEmergency = useCallback(
+    (why: "ended" | "expired" = "ended") => {
+      if (!emergency) return;
+      logAudit({ action: "Security", module: "Emergency access", summary: `Emergency access ${why === "expired" ? "expired" : "ended"} for ${user?.name ?? "user"}`, dedupeMs: 0 });
+      saveGrant(null);
+      setEmergency(null);
+    },
+    [emergency, user]
+  );
+
+  const startEmergency = useCallback(
+    (reason: string) => {
+      if (!user) return;
+      const now = Date.now();
+      const grant: EmergencyGrant = { userId: user.id, reason: reason.trim(), startedAt: now, expiresAt: now + EMERGENCY_MINUTES * 60_000 };
+      saveGrant(grant);
+      setEmergency(grant);
+      logAudit({
+        action: "Security",
+        module: "Emergency access",
+        summary: `${user.name} (${user.roleName}) opened patient records in an emergency, read-only for ${EMERGENCY_MINUTES} minutes`,
+        detail: `Reason given: ${grant.reason}`,
+        dedupeMs: 0,
+      });
+    },
+    [user]
+  );
+
+  // The grant switches itself off when its time is up.
+  useEffect(() => {
+    if (!emergency) return;
+    const left = emergency.expiresAt - Date.now();
+    const t = window.setTimeout(() => endEmergency("expired"), Math.max(left, 0));
+    return () => window.clearTimeout(t);
+  }, [emergency, endEmergency]);
+
   const logout = useCallback(() => {
+    if (emergency) {
+      logAudit({ action: "Security", module: "Emergency access", summary: `Emergency access ended at sign out for ${user?.name ?? "user"}`, dedupeMs: 0 });
+      saveGrant(null);
+      setEmergency(null);
+    }
     logAudit({ action: "Sign out", module: "Authentication", summary: "Signed out" });
     try {
       localStorage.removeItem(STORAGE_KEY);
@@ -127,11 +175,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const can = useCallback(
     (module: Module, action: Action = "view") =>
-      !!user && (user.isAdmin || !!user.permissions[module]?.[action]),
-    [user]
+      !!user &&
+      (user.isAdmin ||
+        !!user.permissions[module]?.[action] ||
+        // Emergency access is read-only and only covers patient records.
+        (module === "Patients" && action === "view" && !!emergency && emergency.expiresAt > Date.now())),
+    [user, emergency]
   );
 
-  const value = useMemo(() => ({ user, login, logout, can }), [user, login, logout, can]);
+  const value = useMemo(
+    () => ({ user, login, logout, can, emergency, startEmergency, endEmergency }),
+    [user, login, logout, can, emergency, startEmergency, endEmergency]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

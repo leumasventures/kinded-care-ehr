@@ -41,4 +41,8 @@ export const STORE_KEYS = {
   triage: "hms_triage",
   doctors: "hms_doctors",
   documents: "hms_documents",
+  patientMerges: "hms_patient_merges",
+  claims: "hms_claims",
+  suppliers: "hms_suppliers",
+  stockReceipts: "hms_stock_receipts",
 } as const;

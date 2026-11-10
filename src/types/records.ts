@@ -1,6 +1,6 @@
 import type { AuthUser } from "../context/AuthContext";
 
-export const NOTE_CATEGORIES = ["Progress note", "Consultation", "Procedure", "Nursing note", "Handover", "Other"] as const;
+export const NOTE_CATEGORIES = ["Progress note", "Consultation", "Procedure", "Nursing note", "Handover", "Lab result", "Other"] as const;
 export type NoteCategory = (typeof NOTE_CATEGORIES)[number];
 
 export const RX_ROUTES = ["Oral", "IV", "IM", "SC", "Topical", "Inhaled", "Rectal", "Other"] as const;
@@ -21,6 +21,7 @@ export interface ClinicalNote {
   authorRole: string;
   addendumTo?: string; // id of the note this corrects or adds to
   appointmentId?: string; // set when the note was written from an appointment
+  labOrderId?: string; // set on notes posted automatically from a lab result
   /** Explicit lock state. When unset, the note locks itself NOTE_EDIT_WINDOW_HOURS after it was written. */
   locked?: boolean;
   lockLog?: LockEvent[];
@@ -75,6 +76,11 @@ export interface Prescription {
   stoppedAt?: number;
   stoppedBy?: string;
   stopReason?: string;
+  appointmentId?: string; // set when prescribed from a consultation
+  /** Prescribed from a consultation and waiting at the pharmacy until dispensedAt is set. */
+  toDispense?: boolean;
+  dispensedAt?: number;
+  dispensedBy?: string;
 }
 
 export interface Administration {
@@ -92,6 +98,7 @@ export interface Administration {
   administeredBy: string; // nurse or doctor who gave it
   administeredRole: string;
   note?: string;
+  slot?: string; // scheduled time ("08:00") this dose belonged to, set when given from the nurses' round
 }
 
 export interface PatientRecords {

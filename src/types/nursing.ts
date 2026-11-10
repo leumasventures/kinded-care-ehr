@@ -1,4 +1,4 @@
-import { seedAdmissions, type Admission } from "./admissions";
+import { loadAdmissions, type Admission } from "./admissions";
 
 export const VITALS_DUE_HOURS = 6;
 
@@ -48,6 +48,7 @@ export type Route = (typeof ROUTES)[number];
 export type MedStatus = "Due" | "Given" | "Held" | "Refused";
 
 export interface MedOrder {
+  rxId?: string; // the doctor's prescription this dose comes from
   id: string;
   admissionId: string;
   drug: string;
@@ -77,7 +78,7 @@ export interface NursingNote {
 
 export const uid = () => Math.random().toString(36).slice(2, 10);
 
-export const admittedPatients = (): Admission[] => seedAdmissions.filter((a) => a.status === "Admitted");
+export const admittedPatients = (): Admission[] => loadAdmissions().filter((a) => a.status === "Admitted");
 
 export const timeAgo = (ms: number) => {
   const mins = Math.max(0, Math.round((Date.now() - ms) / 60000));
