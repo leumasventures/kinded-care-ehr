@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { CalendarPlus, ChevronLeft, ChevronRight, Copy, Download, Plus, Printer } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { diffById, logAudit } from "../services/audit";
 import { addDaysISO, todayISO } from "../types/billing";
-import { loadRoles, loadUsers } from "../types/access";
+import { api } from "../services/api";
 import {
   SHIFT_TYPES,
   UNITS,
@@ -69,13 +69,18 @@ export default function DutyRoster() {
   const canEdit = can("Roster", "edit");
   const canDelete = can("Roster", "delete");
 
-  // Every active user is staff. People added on the Users page appear here automatically.
-  const staff = useMemo<StaffMember[]>(() => {
-    const roles = loadRoles();
-    return loadUsers()
-      .filter((u) => u.active)
-      .map((u) => ({ id: u.id, name: u.name, role: roles.find((r) => r.id === u.roleId)?.name ?? "" }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+  // Every active user is staff. People added on the Users page appear here automatically (read from the database).
+  const [staff, setStaff] = useState<StaffMember[]>([]);
+  useEffect(() => {
+    let live = true;
+    Promise.all([api.get<{ staff: { id: string; name: string; roleId: string }[] }>("/users/directory"), api.get<{ roles: { id: string; name: string }[] }>("/roles")])
+      .then(([d, r]) => {
+        if (live) setStaff(d.staff.map((u) => ({ id: u.id, name: u.name, role: r.roles.find((x) => x.id === u.roleId)?.name ?? "" })));
+      })
+      .catch(() => undefined);
+    return () => {
+      live = false;
+    };
   }, []);
 
   const flash = (m: string) => {

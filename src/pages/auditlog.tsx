@@ -1,8 +1,9 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { ChevronDown, ChevronRight, Download, RefreshCw, ShieldAlert, ShieldCheck } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { AUDIT_ACTIONS, checkIntegrity, loadAudit, logAudit, type AuditAction, type AuditEntry } from "../services/audit";
+import { api } from "../services/api";
+import { AUDIT_ACTIONS, logAudit, type AuditAction, type AuditEntry } from "../services/audit";
 import { todayISO } from "../types/billing";
 
 const PAGE_SIZE = 25;
@@ -36,8 +37,19 @@ const csvCell = (v: string) => `"${(/^[=+\-@]/.test(v) ? `'${v}` : v).replace(/"
 
 const inputClass = "rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
+interface ServerEntry extends Omit<AuditEntry, "at"> {
+  at: string;
+}
+interface Page {
+  entries: ServerEntry[];
+  next: number | null;
+}
+
 function AuditLogInner() {
-  const [entries, setEntries] = useState<AuditEntry[]>(loadAudit);
+  const [entries, setEntries] = useState<AuditEntry[]>([]);
+  const [next, setNext] = useState<number | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [who, setWho] = useState("all");
@@ -48,6 +60,36 @@ function AuditLogInner() {
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState<string | null>(null);
   const [integrity, setIntegrity] = useState<{ ok: boolean; message: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const load = useCallback(async (before?: number) => {
+    setLoading(true);
+    setLoadError("");
+    try {
+      const r = await api.get<Page>(`/audit?limit=500${before ? `&before=${before}` : ""}`);
+      const rows = r.entries.map((e) => ({ ...e, at: Date.parse(e.at) }));
+      setEntries((prev) => (before ? [...prev, ...rows] : rows));
+      setNext(r.next);
+    } catch (e) {
+      setLoadError(e instanceof Error ? e.message : "Couldn't load the audit log.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const check = async () => {
+    setChecking(true);
+    try {
+      setIntegrity(await api.get<{ ok: boolean; message: string }>("/audit/verify"));
+    } catch (e) {
+      setIntegrity({ ok: false, message: e instanceof Error ? e.message : "Couldn't check the log." });
+    } finally {
+      setChecking(false);
+    }
+  };
 
   const sorted = useMemo(() => [...entries].sort((a, b) => b.seq - a.seq), [entries]);
   const users = useMemo(() => Array.from(new Set(entries.map((e) => e.userName))).sort(), [entries]);
@@ -82,10 +124,10 @@ function AuditLogInner() {
     setPage(1);
   };
 
-  const refresh = () => setEntries(loadAudit());
+  const refresh = () => void load();
 
   const exportCsv = () => {
-    logAudit({ action: "Export", module: "Audit Log", summary: `Exported ${rows.length} audit log entries to CSV` });
+    logAudit({ action: "Export", module: "Audit Log", summary: `Exported ${rows.length} audit log entries to CSV`, dedupeMs: 0 });
     const header = ["No.", "Time", "User", "Role", "Action", "Module", "Summary", "Detail", "Outcome", "Device"];
     const lines = rows.map((e) =>
       [String(e.seq), new Date(e.at).toISOString(), e.userName, e.role, e.action, e.module, e.summary, e.detail ?? "", e.outcome, e.device].map(csvCell).join(",")
@@ -97,19 +139,20 @@ function AuditLogInner() {
     a.download = `audit-log-${todayISO()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
-    refresh();
   };
 
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-slate-500">A permanent record of who did what, and when. Entries can't be edited or deleted from here. <Link to="/admin" className="text-blue-600 hover:underline">Back to Admin</Link></p>
+        <p className="text-sm text-slate-500">A permanent record of who did what, and when. <Link to="/admin" className="text-blue-600 hover:underline">Back to Admin</Link></p>
         <div className="flex gap-2">
-          <button onClick={() => setIntegrity(checkIntegrity(entries))} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><ShieldCheck size={15} /> Check integrity</button>
+          <button onClick={() => void check()} disabled={checking} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50 disabled:opacity-60"><ShieldCheck size={15} /> {checking ? "Checking..." : "Check integrity"}</button>
           <button onClick={refresh} className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50"><RefreshCw size={15} /> Refresh</button>
           <button onClick={exportCsv} disabled={rows.length === 0} className="flex items-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"><Download size={15} /> Export CSV</button>
         </div>
       </div>
+
+      {loadError && <p role="alert" className="rounded-lg bg-rose-50 px-4 py-2 text-sm text-rose-700">{loadError}</p>}
 
       {integrity && (
         <p role="status" className={`flex items-center gap-2 rounded-lg px-4 py-2 text-sm ${integrity.ok ? "bg-emerald-50 text-emerald-700" : "bg-rose-50 text-rose-700"}`}>
@@ -188,7 +231,7 @@ function AuditLogInner() {
                     <td colSpan={5} className="px-4 py-3 text-xs text-slate-600">
                       <dl className="grid gap-2 sm:grid-cols-3">
                         <div><dt className="uppercase text-slate-400">Entry number</dt><dd>{e.seq}</dd></div>
-                        <div><dt className="uppercase text-slate-400">Device</dt><dd>{e.device}</dd></div>
+                        <div><dt className="uppercase text-slate-400">Device and address</dt><dd>{e.device}{e.ip ? ` · ${e.ip}` : ""}</dd></div>
                         <div><dt className="uppercase text-slate-400">User ID</dt><dd>{e.userId}</dd></div>
                         <div className="sm:col-span-3"><dt className="uppercase text-slate-400">Detail</dt><dd className="whitespace-pre-wrap">{e.detail || "No further detail."}</dd></div>
                       </dl>
@@ -198,14 +241,17 @@ function AuditLogInner() {
               </Fragment>
             ))}
             {rows.length === 0 && (
-              <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">{entries.length === 0 ? "No activity has been recorded yet." : "No entries match these filters."}</td></tr>
+              <tr><td colSpan={6} className="px-5 py-10 text-center text-slate-400">{loading ? "Loading..." : entries.length === 0 ? "No activity has been recorded yet." : "No entries match these filters."}</td></tr>
             )}
           </tbody>
         </table>
       </div>
 
       <div className="flex items-center justify-between text-sm text-slate-500">
-        <span>{rows.length.toLocaleString("en-NG")} of {entries.length.toLocaleString("en-NG")} entries</span>
+        <span>
+          {rows.length.toLocaleString("en-NG")} of {entries.length.toLocaleString("en-NG")} loaded entries
+          {next && <button onClick={() => void load(next)} disabled={loading} className="ml-3 text-blue-600 hover:underline disabled:opacity-50">Load older entries</button>}
+        </span>
         {rows.length > PAGE_SIZE && (
           <div className="flex items-center gap-2">
             <span>Page {safePage} of {pages}</span>
@@ -214,7 +260,7 @@ function AuditLogInner() {
           </div>
         )}
       </div>
-      <p className="text-xs text-slate-400">Entries are kept in this browser for now. The backend must store them itself in a write-once table with its own timestamps and IP addresses, because anyone with access to this browser can change what is saved here.</p>
+      <p className="text-xs text-slate-400">The server records every entry itself, in a table that refuses edits and deletions, with its own clock and each person's address. Entries marked "Reported by the app" come from pages that are not on the server yet.</p>
     </div>
   );
 }

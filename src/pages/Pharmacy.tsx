@@ -3,11 +3,14 @@ import { AlertTriangle, ClipboardCheck, PackagePlus, Pill, Plus, Search, Trash2 
 import { STORE_KEYS, usePersisted } from "../services/store";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
+import Deliveries from "../components/pharmacy/Deliveries";
+import { loadReceipts, loadSuppliers, saveReceipts, saveSuppliers, type StockReceipt } from "../types/suppliers";
 import PatientPicker from "../components/patients/PatientPicker";
 import { allergyList, loadPatients, type Patient } from "../types/patients";
 import { loadRecords, saveRecords, type Prescription } from "../types/records";
 import { addCharges } from "../services/charges";
-import { addDaysISO, formatDate, formatNaira, todayISO } from "../types/billing";
+import { addDaysISO, formatDate, formatNaira, todayISO, uid } from "../types/billing";
+import { logAudit } from "../services/audit";
 import { loadPriceList } from "../types/pricing";
 import { DOCTORS } from "../types/admissions";
 import {
@@ -117,9 +120,17 @@ function DrugForm({ drugs, onSave, onClose }: { drugs: Drug[]; onSave: (d: Drug)
   );
 }
 
-function ReceiveForm({ drug, onSave, onClose }: { drug: Drug; onSave: (qty: number, expiry: string) => void; onClose: () => void }) {
+type ReceiveDetails = { batch?: string; supplierId?: string; supplier?: string; unitCost?: number; reference?: string };
+
+function ReceiveForm({ drug, onSave, onClose }: { drug: Drug; onSave: (qty: number, expiry: string, d: ReceiveDetails) => void; onClose: () => void }) {
+  const suppliers = useMemo(() => loadSuppliers(), []);
   const [qty, setQty] = useState("");
   const [expiry, setExpiry] = useState(addDaysISO(todayISO(), 365));
+  const [batch, setBatch] = useState("");
+  const [supplierId, setSupplierId] = useState("");
+  const [newSupplier, setNewSupplier] = useState("");
+  const [unitCost, setUnitCost] = useState("");
+  const [reference, setReference] = useState("");
   const [error, setError] = useState("");
 
   const submit = (e: FormEvent) => {
@@ -127,7 +138,17 @@ function ReceiveForm({ drug, onSave, onClose }: { drug: Drug; onSave: (qty: numb
     const n = Math.floor(Number(qty));
     if (!(n > 0)) return setError("Enter a quantity above 0.");
     if (expiry <= todayISO()) return setError("The new batch's expiry date must be in the future.");
-    onSave(n, expiry);
+    if (unitCost && !(Number(unitCost) >= 0)) return setError("Enter the cost per unit as a number.");
+    let id = supplierId;
+    let name = suppliers.find((s) => s.id === supplierId)?.name;
+    if (supplierId === "__new") {
+      name = newSupplier.trim();
+      if (!name) return setError("Enter the new supplier's name.");
+      const existing = suppliers.find((s) => s.name.toLowerCase() === name!.toLowerCase());
+      id = existing?.id ?? uid();
+      if (!existing) saveSuppliers([...suppliers, { id, name }]);
+    }
+    onSave(n, expiry, { batch: batch.trim() || undefined, supplierId: id || undefined, supplier: name, unitCost: unitCost ? Number(unitCost) : undefined, reference: reference.trim() || undefined });
   };
 
   return (
@@ -145,6 +166,32 @@ function ReceiveForm({ drug, onSave, onClose }: { drug: Drug; onSave: (qty: numb
             <span className="mb-1 block text-slate-600">Batch expiry</span>
             <input type="date" className={inputClass} value={expiry} onChange={(e) => setExpiry(e.target.value)} />
           </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-600">Batch number (optional)</span>
+            <input className={inputClass} value={batch} onChange={(e) => setBatch(e.target.value)} />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-600">Cost per {drug.unit} (₦, optional)</span>
+            <input type="number" min="0" step="0.01" className={inputClass} value={unitCost} onChange={(e) => setUnitCost(e.target.value)} />
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-600">Supplier</span>
+            <select className={inputClass} value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
+              <option value="">Not recorded</option>
+              {suppliers.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+              <option value="__new">+ New supplier…</option>
+            </select>
+          </label>
+          <label className="block text-sm">
+            <span className="mb-1 block text-slate-600">Invoice / delivery note no.</span>
+            <input className={inputClass} value={reference} onChange={(e) => setReference(e.target.value)} />
+          </label>
+          {supplierId === "__new" && (
+            <label className="col-span-2 block text-sm">
+              <span className="mb-1 block text-slate-600">New supplier's name</span>
+              <input className={inputClass} value={newSupplier} onChange={(e) => setNewSupplier(e.target.value)} />
+            </label>
+          )}
         </div>
         {error && <p className="text-sm text-rose-600">{error}</p>}
         <Buttons onClose={onClose} label="Receive" />
@@ -360,7 +407,7 @@ export default function Pharmacy() {
   const [toast, setToast] = useState("");
   const [drugs, setDrugs] = usePersisted<Drug[]>(STORE_KEYS.drugs, () => seedDrugs);
   const [log, setLog] = usePersisted<Dispensing[]>(STORE_KEYS.dispensing, () => seedDispensing);
-  const [tab, setTab] = useState<"inventory" | "log">("inventory");
+  const [tab, setTab] = useState<"inventory" | "log" | "deliveries">("inventory");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"all" | DrugCategory>("all");
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
@@ -429,8 +476,12 @@ export default function Pharmacy() {
     setTab("log");
   };
 
-  const receive = (qty: number, expiry: string) => {
+  const receive = (qty: number, expiry: string, d: ReceiveDetails) => {
     if (!target) return;
+    const receipt: StockReceipt = { id: uid(), date: todayISO(), sku: target.sku, drug: target.name, qty, expiry, ...d, receivedBy: user?.name ?? "Pharmacy", createdAt: Date.now() };
+    // TODO: POST /stock-receipts via a services/ call (the backend adds the stock and the receipt together)
+    saveReceipts([...loadReceipts(), receipt]);
+    logAudit({ action: "Update", module: "Pharmacy", summary: `Received ${qty} ${target.unit} of ${target.name}${d.supplier ? ` from ${d.supplier}` : ""}${d.batch ? `, batch ${d.batch}` : ""}` });
     // Expiry tracks whichever batch expires first.
     setDrugs((prev) =>
       prev.map((d) =>
@@ -512,6 +563,7 @@ export default function Pharmacy() {
             [
               ["inventory", "Inventory"],
               ["log", `Dispensing log (${log.length})`],
+              ["deliveries", "Deliveries & suppliers"],
             ] as const
           ).map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)} className={`rounded-md px-4 py-1.5 text-sm font-medium ${tab === id ? "bg-white text-slate-800 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
@@ -533,7 +585,9 @@ export default function Pharmacy() {
         </div>
       </div>
 
-      {tab === "inventory" ? (
+      {tab === "deliveries" ? (
+        <Deliveries canManage={can("Pharmacy", "create")} />
+      ) : tab === "inventory" ? (
         <>
           <div className="flex flex-wrap items-center gap-3">
             <div className="relative">

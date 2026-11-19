@@ -8,20 +8,6 @@ const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 const EMAIL_KEY = "hms_login_email";
-const LOCK_KEY = "hms_login_lock";
-const MAX_ATTEMPTS = 5;
-const LOCK_SECONDS = 30;
-
-const IS_DEV = !!(import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV;
-
-// Convenience only, and only in `npm run dev`. These never ship in a production build.
-const DEMO_ACCOUNTS = [
-  { label: "Administrator", email: "admin@hospital.com" },
-  { label: "Doctor", email: "eze@hospital.com" },
-  { label: "Nurse", email: "chioma@hospital.com" },
-  { label: "Cashier", email: "kelechi@hospital.com" },
-];
-
 const readStored = (key: string) => {
   try {
     return localStorage.getItem(key);
@@ -39,7 +25,7 @@ const writeStored = (key: string, value: string | null) => {
 };
 
 export default function Login() {
-  const { user, login } = useAuth();
+  const { user, login, ready } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from ?? "/";
@@ -52,58 +38,26 @@ export default function Login() {
   const [capsLock, setCapsLock] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [attempts, setAttempts] = useState(0);
-  const [lockedUntil, setLockedUntil] = useState(() => Number(readStored(LOCK_KEY)) || 0);
-  const [now, setNow] = useState(() => Date.now());
 
-  // Tick once a second while locked so the countdown updates and the form re-enables itself.
-  useEffect(() => {
-    if (lockedUntil <= Date.now()) return;
-    const id = window.setInterval(() => {
-      const t = Date.now();
-      setNow(t);
-      if (t >= lockedUntil) {
-        window.clearInterval(id);
-        setLockedUntil(0);
-        writeStored(LOCK_KEY, null);
-      }
-    }, 1000);
-    return () => window.clearInterval(id);
-  }, [lockedUntil]);
-
+  if (!ready) return <div className="flex min-h-screen items-center justify-center text-sm text-slate-400">Loading...</div>;
   if (user) return <Navigate to={from} replace />;
 
-  const secondsLeft = Math.max(0, Math.ceil((lockedUntil - now) / 1000));
-  const locked = secondsLeft > 0;
 
   const onKey = (e: KeyboardEvent) => setCapsLock(e.getModifierState?.("CapsLock") ?? false);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (locked || loading) return;
+    if (loading) return;
     setError("");
     setLoading(true);
     try {
       await login(email, password);
       writeStored(EMAIL_KEY, remember ? email.trim() : null);
-      writeStored(LOCK_KEY, null);
       navigate(from, { replace: true });
     } catch (err) {
-      const next = attempts + 1;
+      // The server answers the same way for a wrong email or a wrong password, and locks an account after repeated failures.
       setPassword("");
-      if (next >= MAX_ATTEMPTS) {
-        // Client-side only: slows casual guessing. Real protection must be enforced by the backend.
-        const until = Date.now() + LOCK_SECONDS * 1000;
-        setAttempts(0);
-        setLockedUntil(until);
-        setNow(Date.now());
-        writeStored(LOCK_KEY, String(until));
-        setError(`Too many failed attempts. Try again in ${LOCK_SECONDS} seconds.`);
-      } else {
-        setAttempts(next);
-        const left = MAX_ATTEMPTS - next;
-        setError(`${err instanceof Error ? err.message : "Login failed."}${left <= 2 ? ` ${left} attempt${left === 1 ? "" : "s"} left.` : ""}`);
-      }
+      setError(err instanceof Error ? err.message : "Login failed.");
       setLoading(false);
     }
   };
@@ -131,7 +85,6 @@ export default function Login() {
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
               autoFocus={!email}
-              disabled={locked}
               required
             />
           </label>
@@ -149,8 +102,7 @@ export default function Login() {
                 onBlur={() => setCapsLock(false)}
                 autoComplete="current-password"
                 autoFocus={!!email}
-                disabled={locked}
-                required
+                  required
               />
               <button
                 type="button"
@@ -182,11 +134,10 @@ export default function Login() {
               {error}
             </p>
           )}
-          {locked && <p className="text-center text-sm text-slate-500">Sign-in is paused for {secondsLeft}s.</p>}
 
           <button
             type="submit"
-            disabled={loading || locked || !email || !password}
+            disabled={loading || !email || !password}
             className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
           >
             {loading && <Loader2 size={16} className="animate-spin" />}
@@ -194,26 +145,6 @@ export default function Login() {
           </button>
         </form>
 
-        {IS_DEV && (
-          <div className="mt-4 rounded-lg border border-dashed border-slate-300 p-3 text-center">
-            <p className="mb-2 text-xs text-slate-400">Dev mode: demo accounts accept any password. Click to fill the email.</p>
-            <div className="flex flex-wrap justify-center gap-2">
-              {DEMO_ACCOUNTS.map((a) => (
-                <button
-                  key={a.email}
-                  type="button"
-                  onClick={() => {
-                    setEmail(a.email);
-                    setError("");
-                  }}
-                  className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-medium text-slate-600 hover:bg-slate-50"
-                >
-                  {a.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );

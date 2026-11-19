@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { useAuth } from "../context/AuthContext";
 import { logAudit } from "../services/audit";
+import BackupPanel from "../components/settings/BackupPanel";
 import { DEFAULT_SETTINGS, clearSavedSettings, loadSettings, saveSettings, type AppSettings } from "../types/settings";
 
 const inputClass =
@@ -124,6 +125,7 @@ export default function Settings() {
   ];
 
   return (
+    <div className="space-y-6">
     <form onSubmit={onSubmit} className="max-w-3xl space-y-6">
       {!canEdit && <p className="rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">You can view these settings but don't have permission to change them.</p>}
 
@@ -192,5 +194,7 @@ export default function Settings() {
         {notice && <span role="status" className="text-sm text-emerald-600">{notice}</span>}
       </div>
     </form>
+    <BackupPanel />
+    </div>
   );
 }

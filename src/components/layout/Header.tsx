@@ -20,8 +20,8 @@ export default function Header({ onMenuClick }: HeaderProps) {
       item.path === "/" ? pathname === "/" : pathname.startsWith(item.path)
     )?.label ?? "Dashboard";
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate("/login", { replace: true });
   };
 

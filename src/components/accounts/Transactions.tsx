@@ -12,7 +12,7 @@ import {
   uid,
   type Txn,
   type TxnType,
-} from "../../types/account";
+} from "../../types/accounts";
 import type { Ledger } from "./useLedger";
 
 const inputClass =

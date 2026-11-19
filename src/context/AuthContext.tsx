@@ -1,24 +1,7 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from "react";
-import { EMERGENCY_MINUTES, loadGrant, saveGrant, type EmergencyGrant } from "../services/emergency";
-import { logAudit } from "../services/audit";
-import {
-  effectivePermissions,
-  hashPassword,
-  loadRoles,
-  loadUsers,
-  saveUsers,
-  type Action,
-  type Module,
-  type Permissions,
-} from "../types/access";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { api, changePassword as apiChangePassword, hasStoredSession, parseServerTime, refreshSession, setSessionEndedHandler, signIn, signOut, type SessionUser } from "../services/api";
+import type { EmergencyGrant } from "../services/emergency";
+import { normalizePermissions, type Action, type Module, type Permissions } from "../types/access";
 
 export interface AuthUser {
   id: string;
@@ -27,155 +10,134 @@ export interface AuthUser {
   roleName: string;
   isAdmin: boolean;
   permissions: Permissions;
+  /** True for a new or reset account: the app shows only the "choose a password" screen until it is done. */
+  mustChangePassword: boolean;
 }
 
 interface AuthContextValue {
   user: AuthUser | null;
+  /** False while the app is checking whether a stored sign-in can be continued after a reload. */
+  ready: boolean;
   login: (email: string, password: string) => Promise<void>;
-  logout: () => void;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  logout: () => Promise<void>;
   can: (module: Module, action?: Action) => boolean;
-  /** Time-limited, read-only access to patient records, granted after giving a reason. */
+  /** Time-limited, read-only access to patient records, granted after giving a reason. The server sets the clock. */
   emergency: EmergencyGrant | null;
-  startEmergency: (reason: string) => void;
-  endEmergency: (why?: "ended" | "expired") => void;
+  startEmergency: (reason: string) => Promise<void>;
+  endEmergency: (why?: "ended" | "expired") => Promise<void>;
 }
-
-const STORAGE_KEY = "hms_auth_user";
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-function loadStoredUser(): AuthUser | null {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as AuthUser) : null;
-  } catch {
-    return null;
-  }
+const toAuthUser = (u: SessionUser): AuthUser => ({
+  id: u.id,
+  name: u.name,
+  email: u.email,
+  roleName: u.roleName,
+  isAdmin: u.isAdmin,
+  permissions: normalizePermissions(u.permissions as Partial<Permissions>),
+  mustChangePassword: u.mustChangePassword,
+});
+
+interface ServerGrant {
+  startedAt: string;
+  expiresAt: string;
+  reason: string;
 }
+const toGrant = (userId: string, g: ServerGrant | null): EmergencyGrant | null =>
+  g ? { userId, reason: g.reason, startedAt: parseServerTime(g.startedAt).getTime(), expiresAt: parseServerTime(g.expiresAt).getTime() } : null;
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(loadStoredUser);
-  const [emergency, setEmergency] = useState<EmergencyGrant | null>(() => loadGrant(loadStoredUser()?.id));
+  const [user, setUser] = useState<AuthUser | null>(null);
+  const [ready, setReady] = useState(!hasStoredSession());
+  const [emergency, setEmergency] = useState<EmergencyGrant | null>(null);
 
-  const attemptLogin = useCallback(async (email: string, password: string) => {
-    // MOCK LOGIN (development only): matches a seeded user by email and accepts
-    // any non-empty password. Replace this body with a real call to your backend
-    // (POST /auth/login) that returns the user, role permissions and a JWT.
-    await new Promise((r) => setTimeout(r, 400));
-
-    const users = loadUsers();
-    const found = users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-    if (!found || !password) throw new Error("Invalid email or password.");
-    // Users created in the app have a stored hash. The original demo accounts accept any password.
-    if (found.passwordHash && found.passwordHash !== (await hashPassword(found.id, password)))
-      throw new Error("Invalid email or password.");
-    if (!found.active) throw new Error("This account has been deactivated.");
-
-    const roles = loadRoles();
-    const role = roles.find((r) => r.id === found.roleId);
-    if (!role) throw new Error("Account has no valid role.");
-
-    const authUser: AuthUser = {
-      id: found.id,
-      name: found.name,
-      email: found.email,
-      roleName: role.name,
-      isAdmin: role.id === "r-admin",
-      permissions: effectivePermissions(found, roles),
-    };
-
-    const d = new Date();
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const stamp = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    saveUsers(users.map((u) => (u.id === found.id ? { ...u, lastLogin: stamp } : u)));
-
+  const loadGrant = useCallback(async (u: AuthUser) => {
+    if (u.mustChangePassword || u.isAdmin) return setEmergency(null);
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(authUser));
+      setEmergency(toGrant(u.id, (await api.get<{ grant: ServerGrant | null }>("/emergency-access")).grant));
     } catch {
-      /* storage unavailable: session lasts until reload */
+      setEmergency(null);
     }
-    setUser(authUser);
-    logAudit({
-      action: "Sign in",
-      module: "Authentication",
-      summary: `${authUser.name} signed in`,
-      actor: { id: authUser.id, name: authUser.name, role: authUser.roleName },
-    });
   }, []);
+
+  // After a reload, continue the sign-in from the stored renewal token (if the server still accepts it).
+  useEffect(() => {
+    setSessionEndedHandler(() => {
+      setUser(null);
+      setEmergency(null);
+    });
+    if (!hasStoredSession()) return;
+    let cancelled = false;
+    (async () => {
+      const session = await refreshSession();
+      if (cancelled) return;
+      if (session) {
+        const u = toAuthUser(session);
+        setUser(u);
+        await loadGrant(u);
+      }
+      if (!cancelled) setReady(true);
+    })();
+    return () => {
+      cancelled = true;
+      setSessionEndedHandler(null);
+    };
+  }, [loadGrant]);
 
   const login = useCallback(
     async (email: string, password: string) => {
-      try {
-        await attemptLogin(email, password);
-      } catch (err) {
-        logAudit({
-          action: "Failed sign-in",
-          module: "Authentication",
-          summary: `Failed sign-in for ${email.trim() || "(blank email)"}`,
-          detail: err instanceof Error ? err.message : undefined,
-          outcome: "failure",
-          actor: { name: email.trim() || "Unknown" },
-        });
-        throw err;
-      }
+      const u = toAuthUser(await signIn(email.trim(), password));
+      setUser(u);
+      await loadGrant(u);
     },
-    [attemptLogin]
+    [loadGrant]
   );
 
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    setUser(toAuthUser(await apiChangePassword(currentPassword, newPassword)));
+  }, []);
+
   const endEmergency = useCallback(
-    (why: "ended" | "expired" = "ended") => {
-      if (!emergency) return;
-      logAudit({ action: "Security", module: "Emergency access", summary: `Emergency access ${why === "expired" ? "expired" : "ended"} for ${user?.name ?? "user"}`, dedupeMs: 0 });
-      saveGrant(null);
+    async (why: "ended" | "expired" = "ended") => {
       setEmergency(null);
+      if (why === "ended") {
+        try {
+          await api.del("/emergency-access");
+        } catch {
+          /* the grant also ends by itself on the server when its time is up */
+        }
+      }
     },
-    [emergency, user]
+    []
   );
 
   const startEmergency = useCallback(
-    (reason: string) => {
+    async (reason: string) => {
       if (!user) return;
-      const now = Date.now();
-      const grant: EmergencyGrant = { userId: user.id, reason: reason.trim(), startedAt: now, expiresAt: now + EMERGENCY_MINUTES * 60_000 };
-      saveGrant(grant);
-      setEmergency(grant);
-      logAudit({
-        action: "Security",
-        module: "Emergency access",
-        summary: `${user.name} (${user.roleName}) opened patient records in an emergency, read-only for ${EMERGENCY_MINUTES} minutes`,
-        detail: `Reason given: ${grant.reason}`,
-        dedupeMs: 0,
-      });
+      setEmergency(toGrant(user.id, (await api.post<{ grant: ServerGrant }>("/emergency-access", { reason: reason.trim() })).grant));
     },
     [user]
   );
 
-  // The grant switches itself off when its time is up.
+  // The grant switches itself off in the app when its time is up (the server refuses it from then on anyway).
   useEffect(() => {
     if (!emergency) return;
-    const left = emergency.expiresAt - Date.now();
-    const t = window.setTimeout(() => endEmergency("expired"), Math.max(left, 0));
+    const t = window.setTimeout(() => void endEmergency("expired"), Math.max(emergency.expiresAt - Date.now(), 0));
     return () => window.clearTimeout(t);
   }, [emergency, endEmergency]);
 
-  const logout = useCallback(() => {
-    if (emergency) {
-      logAudit({ action: "Security", module: "Emergency access", summary: `Emergency access ended at sign out for ${user?.name ?? "user"}`, dedupeMs: 0 });
-      saveGrant(null);
-      setEmergency(null);
-    }
-    logAudit({ action: "Sign out", module: "Authentication", summary: "Signed out" });
-    try {
-      localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      /* ignore */
-    }
+  const logout = useCallback(async () => {
     setUser(null);
+    setEmergency(null);
+    await signOut();
   }, []);
 
   const can = useCallback(
     (module: Module, action: Action = "view") =>
       !!user &&
+      !user.mustChangePassword &&
       (user.isAdmin ||
         !!user.permissions[module]?.[action] ||
         // Emergency access is read-only and only covers patient records.
@@ -184,8 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 
   const value = useMemo(
-    () => ({ user, login, logout, can, emergency, startEmergency, endEmergency }),
-    [user, login, logout, can, emergency, startEmergency, endEmergency]
+    () => ({ user, ready, login, changePassword, logout, can, emergency, startEmergency, endEmergency }),
+    [user, ready, login, changePassword, logout, can, emergency, startEmergency, endEmergency]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

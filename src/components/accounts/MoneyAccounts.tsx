@@ -2,7 +2,7 @@ import { useState, type FormEvent, type ReactNode } from "react";
 import { Pencil, Plus, Power } from "lucide-react";
 import Modal from "../billing/Modal";
 import { formatNaira, todayISO } from "../../types/billing";
-import { ACCOUNT_KINDS, round2, uid, type AccountKind, type MoneyAccount } from "../../types/account";
+import { ACCOUNT_KINDS, round2, uid, type AccountKind, type MoneyAccount } from "../../types/accounts";
 import type { Ledger } from "./useLedger";
 
 const inputClass =

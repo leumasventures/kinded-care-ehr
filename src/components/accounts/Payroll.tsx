@@ -13,7 +13,7 @@ import {
   type PayLine,
   type PayrollRun,
   type Txn,
-} from "../../types/account";
+} from "../../types/accounts";
 import type { Ledger } from "./useLedger";
 
 const inputClass =

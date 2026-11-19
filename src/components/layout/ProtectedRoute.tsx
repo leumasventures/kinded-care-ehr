@@ -4,6 +4,7 @@ import { ShieldAlert } from "lucide-react";
 import { useAuth } from "../../context/AuthContext";
 import type { Module } from "../../types/access";
 import { EmergencyDialog } from "./EmergencyAccess";
+import ChangePassword from "./ChangePassword";
 
 interface ProtectedRouteProps {
   /** Require view access to this module. */
@@ -15,13 +16,18 @@ interface ProtectedRouteProps {
 }
 
 export default function ProtectedRoute({ module, adminOnly, children }: ProtectedRouteProps) {
-  const { user, can } = useAuth();
+  const { user, can, ready } = useAuth();
   const location = useLocation();
   const [asking, setAsking] = useState(false);
+
+  if (!ready) return <div className="flex min-h-screen items-center justify-center text-sm text-slate-400">Loading...</div>;
 
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+
+  // A new or reset account has to choose its own password before anything else.
+  if (user.mustChangePassword) return <ChangePassword />;
 
   const denied = (adminOnly && !user.isAdmin) || (module && !can(module));
 

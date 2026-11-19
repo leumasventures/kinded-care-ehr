@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { diffById, logAudit } from "../../services/audit";
 import { formatNaira } from "../../types/billing";
-import { balanceOfAccount, billingTxns, loadAccounts, saveAccounts, type AccountsData, type Txn } from "../../types/account";
+import { balanceOfAccount, billingTxns, loadAccounts, saveAccounts, type AccountsData, type Txn } from "../../types/accounts";
 
 export function useLedger() {
   const { user, can } = useAuth();

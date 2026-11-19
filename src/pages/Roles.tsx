@@ -1,20 +1,21 @@
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Copy, Lock, Plus, Search, Trash2, Users as UsersIcon } from "lucide-react";
-import { logAudit, diffById } from "../services/audit";
+import { api, ApiError } from "../services/api";
 import {
   ACTIONS,
+  ADMIN_ROLE_ID,
   MODULES,
   emptyPermissions,
-  loadRoles,
-  loadUsers,
-  saveRoles,
+  normalizePermissions,
+  type User,
   type Action,
   type Module,
   type Permissions,
   type Role,
 } from "../types/access";
 
-const ADMIN_ID = "r-admin";
+const ADMIN_ID = ADMIN_ROLE_ID;
+const failure = (e: unknown) => (e instanceof ApiError ? e.message : "Couldn't reach the server. Check your connection and try again.");
 const NEW = "new";
 
 const inputClass =
@@ -39,18 +40,34 @@ const PRESETS: { label: string; build: () => Permissions }[] = [
 ];
 
 export default function Roles() {
-  const [roles, setRoles] = useState<Role[]>(loadRoles);
-  const savedRoles = useRef(roles);
+  const [data, setData] = useState<{ roles: Role[]; users: User[] } | null>(null);
+  const [loadError, setLoadError] = useState("");
+  const reload = async () => {
+    try {
+      const [r, u] = await Promise.all([api.get<{ roles: Role[] }>("/roles"), api.get<{ users: User[] }>("/users")]);
+      setData({ roles: r.roles.map((x) => ({ ...x, permissions: normalizePermissions(x.permissions) })), users: u.users });
+      setLoadError("");
+    } catch (e) {
+      setLoadError(failure(e));
+    }
+  };
   useEffect(() => {
-    saveRoles(roles);
-    const d = diffById(savedRoles.current, roles, (a, b) => JSON.stringify(a) === JSON.stringify(b));
-    d.created.forEach((r) => logAudit({ action: "Security", module: "Roles", summary: `Created role ${r.name}`, detail: `${countGranted(r.permissions)} permissions` }));
-    d.updated.forEach((r) => logAudit({ action: "Security", module: "Roles", summary: `Changed role ${r.name}`, detail: `${countGranted(r.permissions)} permissions now granted` }));
-    d.deleted.forEach((r) => logAudit({ action: "Delete", module: "Roles", summary: `Deleted role ${r.name}` }));
-    savedRoles.current = roles;
-  }, [roles]);
-  const [users] = useState(loadUsers);
+    void reload();
+  }, []);
+  if (loadError)
+    return (
+      <div className="space-y-3 rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">
+        <p role="alert">{loadError}</p>
+        <button onClick={() => void reload()} className="rounded-lg bg-white px-4 py-2 font-medium text-slate-700 ring-1 ring-slate-200 hover:bg-slate-50">Try again</button>
+      </div>
+    );
+  if (!data) return <p className="text-sm text-slate-500">Loading roles from the database…</p>;
+  return <RolesEditor roles={data.roles} users={data.users} reload={reload} />;
+}
+
+function RolesEditor({ roles, users, reload }: { roles: Role[]; users: User[]; reload: () => Promise<void> }) {
   const [selectedId, setSelectedId] = useState<string>(() => (roles[1] ?? roles[0]).id);
+  const [busy, setBusy] = useState(false);
   const [query, setQuery] = useState("");
 
   const first = roles[1] ?? roles[0];
@@ -134,25 +151,33 @@ export default function Roles() {
     setPermissions(build());
   };
 
-  const onSubmit = (e: FormEvent) => {
+  const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
-    if (locked) return;
+    if (locked || busy) return;
     const trimmed = name.trim();
     if (!trimmed) return setError("Role name is required.");
     if (roles.some((r) => r.id !== selectedId && r.name.toLowerCase() === trimmed.toLowerCase())) return setError("A role with that name already exists.");
     if (countGranted(permissions) === 0) return setError("Grant at least one permission.");
 
-    // TODO: POST (new) or PUT (existing) to the backend via a services/ call
-    if (creating) {
-      const role: Role = { id: `r-${Date.now()}`, name: trimmed, description: description.trim(), permissions: clone(permissions) };
-      setRoles((prev) => [...prev, role]);
-      setSelectedId(role.id);
-      setSaved(`Role "${trimmed}" created.`);
-    } else {
-      setRoles((prev) => prev.map((r) => (r.id === selectedId ? { ...r, name: trimmed, description: description.trim(), permissions: clone(permissions) } : r)));
-      setSaved("Changes saved.");
+    setBusy(true);
+    try {
+      const body = { name: trimmed, description: description.trim(), permissions };
+      if (creating) {
+        const r = await api.post<{ role: Role }>("/roles", body);
+        await reload();
+        setSelectedId(r.role.id);
+        setSaved(`Role "${trimmed}" created.`);
+      } else {
+        await api.put(`/roles/${selectedId}`, body);
+        await reload();
+        setSaved("Changes saved.");
+      }
+      setError("");
+    } catch (err) {
+      setError(failure(err));
+    } finally {
+      setBusy(false);
     }
-    setError("");
   };
 
   const duplicate = (role: Role) => {
@@ -165,15 +190,19 @@ export default function Roles() {
     setSaved("");
   };
 
-  const remove = (role: Role) => {
+  const remove = async (role: Role) => {
     if (role.id === ADMIN_ID) return;
     const n = userCount(role.id);
     if (n > 0) return window.alert(`${n} user(s) still have the ${role.name} role. Move them to another role first.`);
     if (!window.confirm(`Delete the ${role.name} role?`)) return;
-    // TODO: DELETE /roles/:id via a services/ call
-    setRoles((prev) => prev.filter((r) => r.id !== role.id));
-    setSelectedId(ADMIN_ID);
-    load(roles.find((r) => r.id === ADMIN_ID) ?? null);
+    try {
+      await api.del(`/roles/${role.id}`);
+      await reload();
+      setSelectedId(ADMIN_ID);
+      load(roles.find((r) => r.id === ADMIN_ID) ?? null);
+    } catch (err) {
+      setError(failure(err));
+    }
   };
 
   const granted = countGranted(permissions);
@@ -318,7 +347,7 @@ export default function Roles() {
 
         {!locked && (
           <div className="flex gap-3">
-            <button type="submit" className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700">
+            <button type="submit" disabled={busy} className="rounded-lg bg-blue-600 px-5 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60">
               {creating ? "Create role" : "Save changes"}
             </button>
             {dirty && (

@@ -1,7 +1,9 @@
-// Audit trail. Every sensitive action calls logAudit(); only administrators can open the log (Admin > Audit Log).
-// MOCK: entries are kept in this browser's localStorage. The real backend must write them server-side to an
-// append-only table, stamp the time and the caller's IP itself, and never trust what the browser sends.
-// TODO: replace the body of logAudit/loadAudit with POST/GET /audit-logs via a services/ call.
+// Audit trail. The SERVER writes the log (time, person, address and device come from the server, never from the browser),
+// in an append-only, hash-chained table that only administrators can read (Admin > Audit Log).
+// Parts of the system that already run on the server log themselves there. For pages that are not on the server yet,
+// logAudit() reports the action to the server, which adds who, when and from where. Sign-in, sign-out and security
+// events are never accepted from the browser.
+import { api, isSignedIn } from "./api";
 
 export const AUDIT_ACTIONS = [
   "Sign in",
@@ -32,6 +34,7 @@ export interface AuditEntry {
   summary: string;
   detail?: string;
   outcome: "success" | "failure";
+  ip?: string;
   device: string;
 }
 
@@ -43,87 +46,19 @@ interface Input {
   outcome?: "success" | "failure";
   /** Skip an identical entry made within this many milliseconds (default 2000). */
   dedupeMs?: number;
-  /** Use when nobody is signed in yet (failed sign-in). */
-  actor?: { id?: string; name: string; role?: string };
 }
 
-const KEY = "hms_audit";
-const SEQ_KEY = "hms_audit_seq";
-const MAX_ENTRIES = 10000;
-
-function currentActor(): { id: string; name: string; role: string } {
-  try {
-    const raw = JSON.parse(localStorage.getItem("hms_auth_user") ?? "null");
-    if (raw?.id) return { id: String(raw.id), name: String(raw.name ?? "Unknown"), role: String(raw.roleName ?? "") };
-  } catch {
-    /* ignore */
-  }
-  return { id: "anonymous", name: "Not signed in", role: "" };
-}
-
-function deviceLabel(): string {
-  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
-  const browser = /Edg\//.test(ua) ? "Edge" : /OPR\//.test(ua) ? "Opera" : /Chrome\//.test(ua) ? "Chrome" : /Firefox\//.test(ua) ? "Firefox" : /Safari\//.test(ua) ? "Safari" : "Browser";
-  const os = /Windows/.test(ua) ? "Windows" : /Android/.test(ua) ? "Android" : /iPhone|iPad/.test(ua) ? "iOS" : /Mac OS/.test(ua) ? "macOS" : /Linux/.test(ua) ? "Linux" : "Unknown OS";
-  return `${browser} on ${os}`;
-}
-
-export function loadAudit(): AuditEntry[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    return Array.isArray(raw) ? (raw as AuditEntry[]) : [];
-  } catch {
-    return [];
-  }
-}
-
+const REPORTABLE = new Set<AuditAction>(["View", "Create", "Update", "Delete", "Lock", "Unlock", "Void", "Payment", "Export"]);
 let last: { key: string; at: number } | null = null;
 
 export function logAudit(input: Input) {
-  try {
-    const actor = input.actor ? { id: input.actor.id ?? "anonymous", name: input.actor.name, role: input.actor.role ?? "" } : currentActor();
-    // Ignore an identical entry repeated within two seconds (React re-runs effects in development).
-    const key = `${actor.id}|${input.action}|${input.module}|${input.summary}`;
-    if (last && last.key === key && Date.now() - last.at < (input.dedupeMs ?? 2000)) return;
-    last = { key, at: Date.now() };
-
-    const seq = (Number(localStorage.getItem(SEQ_KEY)) || 0) + 1;
-    const entry: AuditEntry = {
-      id: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
-      seq,
-      at: Date.now(),
-      userId: actor.id,
-      userName: actor.name,
-      role: actor.role,
-      action: input.action,
-      module: input.module,
-      summary: input.summary,
-      detail: input.detail,
-      outcome: input.outcome ?? "success",
-      device: deviceLabel(),
-    };
-    const list = loadAudit();
-    list.push(entry);
-    localStorage.setItem(KEY, JSON.stringify(list.length > MAX_ENTRIES ? list.slice(list.length - MAX_ENTRIES) : list));
-    localStorage.setItem(SEQ_KEY, String(seq));
-  } catch {
-    /* auditing must never break the app; the backend version should fail loudly instead */
-  }
-}
-
-/** Finds entries removed from the log: numbers that jump, or a log that is shorter than the last number issued. */
-export function checkIntegrity(entries: AuditEntry[]): { ok: boolean; message: string } {
-  if (entries.length === 0) return { ok: true, message: "The log is empty." };
-  const sorted = [...entries].sort((a, b) => a.seq - b.seq);
-  const gaps: string[] = [];
-  for (let i = 1; i < sorted.length; i++) {
-    if (sorted[i].seq !== sorted[i - 1].seq + 1) gaps.push(`${sorted[i - 1].seq + 1}–${sorted[i].seq - 1}`);
-  }
-  if (gaps.length) return { ok: false, message: `Entries are missing: numbers ${gaps.slice(0, 5).join(", ")}${gaps.length > 5 ? " and more" : ""}.` };
-  const issued = Number(localStorage.getItem(SEQ_KEY)) || 0;
-  if (issued > sorted[sorted.length - 1].seq) return { ok: false, message: `The newest ${issued - sorted[sorted.length - 1].seq} entr${issued - sorted[sorted.length - 1].seq === 1 ? "y has" : "ies have"} been removed.` };
-  if (sorted[0].seq > 1) return { ok: true, message: `No gaps found from entry ${sorted[0].seq} onward. Entries before that were archived after the ${MAX_ENTRIES.toLocaleString("en-NG")}-entry limit.` };
-  return { ok: true, message: `All ${sorted.length} entries are present with no gaps.` };
+  if (!isSignedIn() || !REPORTABLE.has(input.action)) return;
+  // Ignore an identical entry repeated within two seconds (React re-runs effects in development).
+  const key = `${input.action}|${input.module}|${input.summary}`;
+  if (last && last.key === key && Date.now() - last.at < (input.dedupeMs ?? 2000)) return;
+  last = { key, at: Date.now() };
+  // Fire and forget: a failed report must never break what the person is doing.
+  void api.post("/audit/client", { action: input.action, module: input.module, summary: input.summary, detail: input.detail, outcome: input.outcome }).catch(() => undefined);
 }
 
 /** Compares two lists of records with an `id`, so a page can log what was added, changed or removed. */

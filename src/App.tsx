@@ -12,10 +12,11 @@ import Pharmacy from "./pages/Pharmacy";
 import Nursing from "./pages/Nursing";
 import Admissions from "./pages/Admissions";
 import Billing from "./pages/Billing";
+import Claims from "./pages/Claims";
 import DutyRoster from "./pages/DutyRoster";
-import Accounts from "./pages/Account";
+import Accounts from "./pages/Accounts";
 import PriceList from "./pages/PriceList";
-import Reports from "./pages/Report";
+import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Admin from "./pages/Admin";
 import Users from "./pages/Users";
@@ -43,6 +44,7 @@ export default function App() {
           {/* Every signed-in staff member can open the roster; changing it needs the Roster permissions */}
           <Route path="/duty-roster" element={<DutyRoster />} />
           <Route path="/accounts" element={<ProtectedRoute module="Accounts"><Accounts /></ProtectedRoute>} />
+          <Route path="/claims" element={<ProtectedRoute module="Billing"><Claims /></ProtectedRoute>} />
           <Route path="/price-list" element={<ProtectedRoute module="Billing"><PriceList /></ProtectedRoute>} />
           <Route path="/reports" element={<ProtectedRoute module="Reports"><Reports /></ProtectedRoute>} />
           <Route path="/settings" element={<ProtectedRoute module="Settings"><Settings /></ProtectedRoute>} />

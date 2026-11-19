@@ -14,11 +14,19 @@ export function EmergencyDialog({ onClose }: { onClose: () => void }) {
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState("");
 
-  const submit = () => {
+  const [busy, setBusy] = useState(false);
+
+  const submit = async () => {
     if (reason.trim().length < MIN_REASON_LENGTH) return setError(`Explain the emergency in at least ${MIN_REASON_LENGTH} characters.`);
     if (!agree) return setError("Please confirm you understand this is recorded.");
-    startEmergency(reason);
-    onClose();
+    setBusy(true);
+    try {
+      await startEmergency(reason);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Couldn't open emergency access.");
+      setBusy(false);
+    }
   };
 
   return (
@@ -46,7 +54,7 @@ export function EmergencyDialog({ onClose }: { onClose: () => void }) {
         {error && <p role="alert" className="text-rose-600">{error}</p>}
         <div className="flex justify-end gap-3">
           <button onClick={onClose} className="rounded-lg border border-slate-200 px-4 py-2 font-medium text-slate-600 hover:bg-slate-50">Cancel</button>
-          <button onClick={submit} className="rounded-lg bg-rose-600 px-5 py-2 font-medium text-white hover:bg-rose-700">Open records</button>
+          <button onClick={submit} disabled={busy} className="rounded-lg bg-rose-600 px-5 py-2 font-medium text-white hover:bg-rose-700 disabled:opacity-60">{busy ? "Opening..." : "Open records"}</button>
         </div>
       </div>
     </Modal>
@@ -82,7 +90,7 @@ export function EmergencyBanner() {
   return (
     <div role="status" className="flex flex-wrap items-center justify-between gap-2 bg-rose-600 px-4 py-2 text-sm text-white">
       <span className="flex items-center gap-2"><ShieldAlert size={16} /> Emergency access is on: patient records, read-only. {mins} minute{mins === 1 ? "" : "s"} left. Everything you open is recorded.</span>
-      <button onClick={() => endEmergency("ended")} className="rounded-md bg-white/20 px-3 py-1 text-xs font-semibold hover:bg-white/30">End now</button>
+      <button onClick={() => void endEmergency("ended")} className="rounded-md bg-white/20 px-3 py-1 text-xs font-semibold hover:bg-white/30">End now</button>
     </div>
   );
 }

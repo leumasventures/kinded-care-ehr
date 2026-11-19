@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -5,28 +6,19 @@ import {
   CheckCircle2,
   FileText,
   Info,
-  KeyRound,
   ScrollText,
   ShieldCheck,
   Tag,
-  UserPlus,
   Users as UsersIcon,
   UserX,
   type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { ACTIONS, MODULES, loadRoles, loadUsers, type Action } from "../types/access";
+import { api } from "../services/api";
+import type { AuditEntry } from "../services/audit";
+import { ACTIONS, ADMIN_ROLE_ID, MODULES, normalizePermissions, type Action, type Role, type User } from "../types/access";
 
-const ADMIN_ROLE_ID = "r-admin";
 const STALE_DAYS = 30;
-
-// Sample activity. Replace with the audit log from the backend (GET /audit-logs).
-const activity: { id: number; icon: LucideIcon; tone: string; text: string; time: string }[] = [
-  { id: 1, icon: ShieldCheck, tone: "bg-blue-50 text-blue-600", text: "Admin User created role “Cashier”", time: "Today, 08:20" },
-  { id: 2, icon: UserX, tone: "bg-rose-50 text-rose-600", text: "Tobi Pharm was deactivated", time: "Yesterday, 16:45" },
-  { id: 3, icon: UserPlus, tone: "bg-emerald-50 text-emerald-600", text: "Kelechi Cash was added as Cashier", time: "Yesterday, 11:10" },
-  { id: 4, icon: KeyRound, tone: "bg-amber-50 text-amber-600", text: "Permissions updated for role “Nurse”", time: "Oct 25, 09:32" },
-];
 
 type Level = "Full" | "Edit" | "View" | "None";
 
@@ -44,9 +36,10 @@ const levelOf = (p: Record<Action, boolean>): Level => {
   return "None";
 };
 
-const daysSince = (stamp: string) => {
+const daysSince = (stamp: string | null) => {
+  if (!stamp) return null; // never signed in
   const d = new Date(`${stamp.slice(0, 10)}T00:00:00`);
-  if (Number.isNaN(d.getTime())) return null; // e.g. "Never"
+  if (Number.isNaN(d.getTime())) return null;
   return Math.floor((Date.now() - d.getTime()) / 86_400_000);
 };
 
@@ -60,8 +53,25 @@ const quickLinks: { to: string; label: string; hint: string; icon: LucideIcon }[
 
 export default function Admin() {
   const { user: me } = useAuth();
-  const allUsers = loadUsers();
-  const allRoles = loadRoles();
+  const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [allRoles, setAllRoles] = useState<Role[]>([]);
+  const [recent, setRecent] = useState<AuditEntry[]>([]);
+  const [state, setState] = useState<"loading" | "ready" | "error">("loading");
+  useEffect(() => {
+    let live = true;
+    Promise.all([api.get<{ users: User[] }>("/users"), api.get<{ roles: Role[] }>("/roles"), api.get<{ entries: AuditEntry[] }>("/audit?limit=8")])
+      .then(([u, r, a]) => {
+        if (!live) return;
+        setAllUsers(u.users);
+        setAllRoles(r.roles.map((x) => ({ ...x, permissions: normalizePermissions(x.permissions) })));
+        setRecent(a.entries);
+        setState("ready");
+      })
+      .catch(() => live && setState("error"));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   const total = allUsers.length;
   const active = allUsers.filter((u) => u.active);
@@ -99,6 +109,9 @@ export default function Admin() {
     { label: "Inactive", value: inactive, icon: UserX, color: "bg-rose-50 text-rose-600" },
     { label: "Roles", value: allRoles.length, icon: ShieldCheck, color: "bg-amber-50 text-amber-600" },
   ];
+
+  if (state === "loading") return <p className="text-sm text-slate-500">Loading from the database…</p>;
+  if (state === "error") return <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm text-rose-700">Couldn't load the dashboard from the server. Check your connection and refresh.</p>;
 
   return (
     <div className="space-y-6">
@@ -211,18 +224,18 @@ export default function Admin() {
         <section className="rounded-xl border border-slate-200 bg-white lg:col-span-2">
           <h2 className="border-b border-slate-200 px-5 py-4 font-semibold text-slate-800">Recent activity</h2>
           <ul className="divide-y divide-slate-100">
-            {activity.map(({ id, icon: Icon, tone, text, time }) => (
-              <li key={id} className="flex items-center gap-3 px-5 py-3">
-                <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${tone}`}>
-                  <Icon size={15} />
-                </div>
-                <span className="flex-1 text-sm text-slate-700">{text}</span>
-                <span className="shrink-0 text-xs text-slate-400">{time}</span>
+            {recent.map((e) => (
+              <li key={e.id} className="flex items-center gap-3 px-5 py-3">
+                <span className="flex-1 text-sm text-slate-700">
+                  <span className="font-medium">{e.userName || "System"}</span>: {e.summary}
+                </span>
+                <span className="shrink-0 text-xs text-slate-400">{new Date(e.at).toLocaleString([], { dateStyle: "medium", timeStyle: "short" })}</span>
               </li>
             ))}
+            {recent.length === 0 && <li className="px-5 py-6 text-center text-sm text-slate-400">No activity recorded yet.</li>}
           </ul>
           <p className="border-t border-slate-100 px-5 py-3 text-xs text-slate-400">
-            Sample entries. This will show the real audit log once the backend is connected.
+            Latest entries from the audit log in the database. <Link to="/admin/audit" className="text-blue-600 hover:underline">See all</Link>
           </p>
         </section>
 
