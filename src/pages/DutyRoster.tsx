@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarPlus, ChevronLeft, ChevronRight, Copy, Download, Plus, Printer } from "lucide-react";
+import { CalendarPlus, ChevronLeft, ChevronRight, Copy, Plus, Printer } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { diffById, logAudit } from "../services/audit";
 import { addDaysISO, todayISO } from "../types/billing";

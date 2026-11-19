@@ -46,7 +46,7 @@ export default function MergeDialog({ patient, onDone, onClose }: { patient: Pat
   const run = () => {
     if (!keep || !dupe || typed !== "MERGE") return;
     const res = mergePatients(keep.id, dupe.id, user?.name ?? "Unknown user");
-    if (!res.ok) return setError(res.reason);
+    if ("reason" in res) return setError(res.reason);
     const n = Object.values(res.moved).reduce((s, x) => s + x, 0);
     onDone(`${dupe.name} (${dupe.id}) was merged into ${keep.name} (${keep.id}). ${n} record${n === 1 ? "" : "s"} moved.`);
   };

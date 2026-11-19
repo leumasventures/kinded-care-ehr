@@ -62,7 +62,7 @@ export function logAudit(input: Input) {
 }
 
 /** Compares two lists of records with an `id`, so a page can log what was added, changed or removed. */
-export function diffById<T extends { id: string }>(prev: T[], next: T[], same: (a: T, b: T) => boolean) {
+export function diffById<T extends { id: string }>(prev: T[], next: T[], same: (a: any, b: any) => boolean) {
   const before = new Map(prev.map((x) => [x.id, x]));
   const after = new Map(next.map((x) => [x.id, x]));
   return {

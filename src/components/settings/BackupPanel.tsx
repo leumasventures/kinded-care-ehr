@@ -26,7 +26,7 @@ export default function BackupPanel() {
     if (!f) return;
     if (f.size > 20 * 1024 * 1024) return setError("That file is too large to be one of our backups.");
     const res = readBackup(await f.text());
-    if (!res.ok) return setError(res.reason);
+    if ("reason" in res) return setError(res.reason);
     setFile(res.file);
   };
 
