@@ -122,65 +122,7 @@ export function nextInvoiceNumber(invoices: Invoice[]) {
 }
 
 // Mock seed data. Replace with a services/ call when the backend is ready.
-export const seedInvoices: Invoice[] = [
-  {
-    id: "i-1",
-    number: "INV-1001",
-    patientId: "P-1001", patient: "Chidi Okafor",
-    patientPhone: "0803 555 0101",
-    date: "2026-10-27",
-    dueDate: "2026-11-10",
-    items: [
-      { id: "l-1", description: "General consultation", qty: 1, unitPrice: 5000 },
-      { id: "l-2", description: "Full blood count", qty: 1, unitPrice: 7500 },
-    ],
-    discount: 0,
-    vatRate: 0,
-    payments: [{ id: "p-1", date: "2026-10-27", amount: 12500, method: "POS", reference: "POS-88213" }],
-  },
-  {
-    id: "i-2",
-    number: "INV-1002",
-    patientId: "P-1002", patient: "Amaka Nwosu",
-    patientPhone: "0802 555 0102",
-    date: "2026-10-26",
-    dueDate: "2026-11-09",
-    items: [
-      { id: "l-3", description: "Maternity admission (3 days)", qty: 3, unitPrice: 25000 },
-      { id: "l-4", description: "Delivery fee", qty: 1, unitPrice: 85000 },
-      { id: "l-5", description: "Drugs & consumables", qty: 1, unitPrice: 18500 },
-    ],
-    discount: 5000,
-    vatRate: 0,
-    notes: "Balance to be cleared before discharge.",
-    payments: [{ id: "p-2", date: "2026-10-26", amount: 100000, method: "Bank Transfer", reference: "TRF-440912" }],
-  },
-  {
-    id: "i-3",
-    number: "INV-1003",
-    patientId: "P-1003", patient: "Ifeanyi Uche",
-    date: "2026-10-10",
-    dueDate: "2026-10-17",
-    items: [{ id: "l-6", description: "General ward (2 days)", qty: 2, unitPrice: 15000 }],
-    discount: 0,
-    vatRate: 0,
-    payments: [],
-  },
-  {
-    id: "i-4",
-    number: "INV-1004",
-    patientId: "P-1004", patient: "Ngozi Eke",
-    date: "2026-10-25",
-    dueDate: "2026-11-08",
-    items: [
-      { id: "l-7", description: "Artemether/Lumefantrine", qty: 2, unitPrice: 2500 },
-      { id: "l-8", description: "Paracetamol 500mg (strip)", qty: 3, unitPrice: 500 },
-    ],
-    discount: 0,
-    vatRate: 0,
-    payments: [{ id: "p-3", date: "2026-10-25", amount: 6500, method: "Cash" }],
-  },
-];
+export const seedInvoices: Invoice[] = [];
 
 /** Live data (survives reloads). Pages read this instead of the demo seed. */
 export const loadInvoices = (): Invoice[] => loadStore(STORE_KEYS.invoices, () => seedInvoices);

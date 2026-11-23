@@ -120,23 +120,7 @@ export function toIcs(entries: RosterEntry[], title: string) {
 const KEY = "hms_roster";
 
 function seed(): RosterEntry[] {
-  const monday = weekStart(todayISO());
-  const out: RosterEntry[] = [];
-  const add = (staffId: string, staffName: string, staffRole: string, offset: number, shift: ShiftId, unit: string, note = "") =>
-    out.push({ id: uid(), date: addDaysISO(monday, offset), staffId, staffName, staffRole, shift, unit, note, createdBy: "Admin User", createdAt: Date.now() });
-
-  for (let w = -1; w <= 2; w++) {
-    const o = w * 7;
-    for (let d = 0; d < 5; d++) {
-      add("u-2", "Dr. Eze", "Doctor", o + d, "Morning", "Outpatient (OPD)");
-      add("u-1", "Admin User", "Administrator", o + d, "Morning", "Administration");
-      add("u-5", "Kelechi Cash", "Cashier", o + d, "Morning", "Accounts & Billing");
-    }
-    add("u-2", "Dr. Eze", "Doctor", o + 5, "On call", "Emergency", "Reachable on 0803 555 0201");
-    for (let d = 0; d < 3; d++) add("u-3", "Chioma Nurse", "Nurse", o + d, "Morning", "General Ward");
-    for (let d = 3; d < 5; d++) add("u-3", "Chioma Nurse", "Nurse", o + d, "Night", "General Ward", "Handover at 8am");
-  }
-  return out.filter((e, i, a) => a.findIndex((x) => x.staffId === e.staffId && x.date === e.date && x.shift === e.shift) === i);
+  return [];
 }
 
 export function loadRoster(): RosterEntry[] {

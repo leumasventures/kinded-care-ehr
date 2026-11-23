@@ -150,26 +150,7 @@ const ad = (p: Prescription, hours: number, by: string, role: string, outcome: A
 });
 
 function seed(): PatientRecords {
-  const r1 = rx("P-1001", 30, "Ceftriaxone", "1 g", "IV", "Twice daily (BD)", "5 days", "Dr. Eze", "Review sensitivity results on day 3.");
-  const r2 = rx("P-1001", 30, "Paracetamol", "1 g", "Oral", "Every 8 hours", "3 days", "Dr. Eze");
-  const r3 = rx("P-1003", 6, "Amlodipine", "10 mg", "Oral", "Once daily", "Ongoing", "Dr. Eze");
-  return {
-    notes: [
-      n("P-1001", 30, "Consultation", "Presented with 3 days of fever, cough and chest pain. Chest crackles at the right base. Admitted for IV antibiotics. Chest X-ray requested.", "Dr. Eze", "Doctor"),
-      n("P-1001", 9, "Nursing note", "Febrile overnight, tepid sponging done. Taking oral fluids well.", "Chioma Nurse", "Nurse"),
-      n("P-1001", 4, "Progress note", "Fever settling. Chest sounds improving. Continue current antibiotics.", "Dr. Eze", "Doctor"),
-      n("P-1003", 6, "Consultation", "Blood pressure 168/102 at review. Headache, no neurological deficit. Start amlodipine and recheck in 2 hours.", "Dr. Eze", "Doctor"),
-    ],
-    prescriptions: [r1, r2, r3],
-    administrations: [
-      ad(r1, 28, "Chioma Nurse", "Nurse"),
-      ad(r1, 16, "Chioma Nurse", "Nurse"),
-      ad(r1, 4, "Chioma Nurse", "Nurse"),
-      ad(r2, 20, "Chioma Nurse", "Nurse"),
-      ad(r2, 12, "Chioma Nurse", "Nurse", "Held", "Temperature normal at the time; held until next round."),
-      ad(r3, 5, "Chioma Nurse", "Nurse"),
-    ],
-  };
+  return { notes: [], prescriptions: [], administrations: [] };
 }
 
 export function loadRecords(): PatientRecords {

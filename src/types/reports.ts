@@ -73,17 +73,7 @@ export function buildClinicalData(days = 120): DayStats[] {
 }
 
 // Share of OPD visits per diagnosis (sample).
-export const DIAGNOSIS_SHARES: [string, number][] = [
-  ["Malaria", 0.18],
-  ["Upper respiratory tract infection", 0.14],
-  ["Hypertension", 0.1],
-  ["Typhoid fever", 0.08],
-  ["Diabetes mellitus", 0.07],
-  ["Gastroenteritis", 0.07],
-  ["Urinary tract infection", 0.06],
-  ["Pneumonia", 0.04],
-  ["Other", 0.26],
-];
+export const DIAGNOSIS_SHARES: [string, number][] = [];
 
 export function downloadCsv(filename: string, rows: (string | number)[][]) {
   const esc = (v: string | number) => {

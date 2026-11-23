@@ -228,72 +228,7 @@ const emp = (
 });
 
 function seed(): AccountsData {
-  const base = ago(75);
-  const accounts: MoneyAccount[] = [
-    { id: ACC_CASH, name: "Cash on hand", kind: "Cash", bankName: "", accountNumber: "", opening: 600000, openingDate: base, active: true },
-    { id: ACC_BANK, name: "Main bank account", kind: "Bank", bankName: "Your bank", accountNumber: "", opening: 4500000, openingDate: base, active: true },
-    { id: ACC_POS, name: "POS settlement", kind: "POS / Mobile money", bankName: "", accountNumber: "", opening: 0, openingDate: base, active: true },
-  ];
-
-  const t = (
-    daysAgo: number,
-    type: TxnType,
-    category: string,
-    description: string,
-    party: string,
-    amount: number,
-    accountId: string,
-    by: string,
-    reference = ""
-  ): Txn => ({
-    id: uid(), date: ago(daysAgo), type, category, description, party, reference, amount, accountId,
-    source: "manual", recordedBy: by, recordedAt: Date.now() - daysAgo * 86_400_000,
-  });
-
-  const employees: Employee[] = [
-    emp(1, "Dr. Eze", "Consultant Physician", "Medical", 450000, 90000, 60000, 62000),
-    emp(2, "Dr. Obi", "Obstetrician", "Medical", 450000, 90000, 60000, 62000),
-    emp(3, "Dr. Ade", "Paediatrician", "Medical", 420000, 85000, 55000, 57000),
-    emp(4, "Dr. Nwankwo", "Surgeon", "Medical", 480000, 95000, 65000, 68000),
-    emp(5, "Chioma Nurse", "Senior Nurse", "Nursing", 150000, 30000, 20000, 9000),
-    emp(6, "Ngozi Nurse", "Staff Nurse", "Nursing", 130000, 26000, 18000, 6500),
-    emp(7, "Tobi Pharm", "Pharmacist", "Pharmacy", 200000, 40000, 25000, 14000),
-    emp(8, "Kelechi Cash", "Cashier", "Accounts", 90000, 18000, 12000, 2500),
-    emp(9, "Emeka Lab", "Medical Lab Scientist", "Laboratory", 180000, 36000, 24000, 11000),
-    emp(10, "Ada Cleaner", "Cleaner", "Support", 60000, 0, 8000, 0),
-  ];
-
-  const lastMonth = prevMonth(monthOf(todayISO()));
-  const lines = employees.map((e) => payLine(e));
-  const paidOn = `${lastMonth}-28`;
-  const payrollTxn: Txn = {
-    id: uid(), date: paidOn, type: "Expense", category: "Salaries & wages",
-    description: `Payroll for ${monthLabel(lastMonth)} (${lines.length} staff)`, party: "Staff", reference: "",
-    amount: round2(lines.reduce((s, l) => s + l.net, 0)), accountId: ACC_BANK, source: "payroll", recordedBy: "Kelechi Cash", recordedAt: Date.now() - 35 * 86_400_000,
-  };
-
-  return {
-    accounts,
-    employees,
-    txns: [
-      t(60, "Income", "Donations & grants", "Community health grant, first tranche", "State Ministry of Health", 1200000, ACC_BANK, "Admin User", "GR-2026-014"),
-      t(50, "Income", "HMO / NHIA claims", "Claims settlement for August", "Hygeia HMO", 640000, ACC_BANK, "Kelechi Cash", "HMO-8841"),
-      t(33, "Expense", "Rent", "Annex building rent, quarter", "Landlord", 750000, ACC_BANK, "Kelechi Cash"),
-      t(26, "Expense", "Drugs & medical supplies", "Restock of antibiotics and IV fluids", "Emzor Distributors", 685000, ACC_BANK, "Kelechi Cash", "INV-5521"),
-      t(18, "Expense", "Electricity & fuel", "Diesel for generator", "Aba Fuel Depot", 180000, ACC_CASH, "Kelechi Cash"),
-      t(14, "Expense", "Laboratory consumables", "Reagents and test kits", "MedLab Supplies", 210000, ACC_BANK, "Kelechi Cash"),
-      t(10, "Expense", "Electricity & fuel", "Electricity bill (prepaid meter)", "Enugu Electricity Distribution", 95000, ACC_BANK, "Kelechi Cash"),
-      t(8, "Expense", "Cleaning & sanitation", "Cleaning supplies and waste disposal", "CleanCo", 48000, ACC_CASH, "Kelechi Cash"),
-      t(6, "Transfer", "Cash deposit", "Banked cash takings", "", 100000, ACC_CASH, "Kelechi Cash"),
-      t(4, "Expense", "Equipment & maintenance", "Servicing of oxygen concentrator", "BioMed Services", 120000, ACC_BANK, "Admin User"),
-      t(2, "Expense", "Transport", "Ambulance fuel and driver allowance", "Transport desk", 35000, ACC_CASH, "Kelechi Cash"),
-      t(1, "Income", "Other income", "Rental of hall to community group", "Aba Youth Forum", 60000, ACC_CASH, "Kelechi Cash"),
-      payrollTxn,
-    ].map((x) => (x.type === "Transfer" ? { ...x, toAccountId: ACC_BANK } : x)),
-    runs: [
-      { id: uid(), month: lastMonth, lines, status: "Paid", paidOn, paidFromAccountId: ACC_BANK, paidBy: "Kelechi Cash", txnId: payrollTxn.id },
-    ],
-  };
+  return { accounts: [], txns: [], employees: [], runs: [] };
 }
 
 export function loadAccounts(): AccountsData {

@@ -20,7 +20,7 @@ import {
 
 const statusStyle: Record<DoctorStatus, string> = {
   Available: "bg-emerald-50 text-emerald-700",
-  "In Surgery": "bg-amber-50 text-amber-700",
+  "Not Onseat": "bg-amber-50 text-amber-700",
   "On Leave": "bg-slate-100 text-slate-600",
 };
 
@@ -147,7 +147,7 @@ export default function Doctors() {
   const stats = [
     { label: "Doctors", value: doctors.length },
     { label: "Available today", value: doctors.filter((d) => d.status === "Available" && worksToday(d)).length },
-    { label: "In surgery", value: doctors.filter((d) => d.status === "In Surgery").length },
+    { label: "Not Onseat", value: doctors.filter((d) => d.status === "Not Onseat").length },
     { label: "On leave", value: doctors.filter((d) => d.status === "On Leave").length },
     { label: "Appointments today", value: doctors.reduce((s, d) => s + todayAppts(d).length, 0) },
   ];

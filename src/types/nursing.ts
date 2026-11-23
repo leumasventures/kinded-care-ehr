@@ -105,18 +105,7 @@ const v = (
 ): Vitals => ({ id: uid(), admissionId, recordedAt: ago(hours), recordedBy: by, temp, systolic, diastolic, pulse, resp, spo2, note });
 
 // Mock seed data (keyed to the seed admissions). Replace with a services/ call when the backend is ready.
-export const seedVitals: Vitals[] = [
-  v("AD-301", 2, "Nurse Chioma", 38.2, 135, 90, 96, 20, 95, "Febrile; paracetamol given"),
-  v("AD-301", 9, "Nurse Chioma", 38.9, 130, 85, 102, 22, 96),
-  v("AD-302", 1.5, "Nurse Chioma", 37.4, 110, 70, 88, 18, 99),
-  v("AD-303", 0.5, "Nurse Ngozi", 37.9, 118, 76, 112, 28, 91, "On oxygen 4 L/min"),
-  v("AD-304", 3, "Nurse Ngozi", 36.8, 168, 102, 84, 18, 98, "Headache; doctor informed"),
-  v("AD-305", 9, "Nurse Chioma", 37.1, 120, 80, 78, 16, 98),
-  v("AD-306", 1, "Nurse Chioma", 36.9, 152, 98, 90, 18, 98),
-  v("AD-307", 2.5, "Nurse Ngozi", 38.4, 90, 60, 128, 32, 96),
-  v("AD-308", 4, "Nurse Ngozi", 37.2, 100, 64, 104, 24, 97),
-  v("AD-309", 1, "Nurse Ngozi", 36.6, 124, 78, 72, 14, 98),
-];
+export const seedVitals: Vitals[] = [];
 
 const m = (admissionId: string, drug: string, dose: string, route: Route, time: string, status: MedStatus = "Due", by?: string): MedOrder => ({
   id: uid(),
@@ -129,38 +118,11 @@ const m = (admissionId: string, drug: string, dose: string, route: Route, time: 
   ...(status !== "Due" ? { doneAt: Date.now() - 3_600_000, doneBy: by } : {}),
 });
 
-export const seedMeds: MedOrder[] = [
-  m("AD-301", "Ceftriaxone", "1 g", "IV", "08:00", "Given", "Nurse Chioma"),
-  m("AD-301", "Paracetamol", "1 g", "Oral", "12:00"),
-  m("AD-301", "Ceftriaxone", "1 g", "IV", "20:00"),
-  m("AD-302", "Ferrous sulphate", "200 mg", "Oral", "09:00", "Given", "Nurse Chioma"),
-  m("AD-302", "Paracetamol", "1 g", "Oral", "15:00"),
-  m("AD-303", "Ceftriaxone", "2 g", "IV", "06:00", "Given", "Nurse Ngozi"),
-  m("AD-303", "Ceftriaxone", "2 g", "IV", "18:00"),
-  m("AD-303", "Salbutamol", "2 puffs", "Inhaled", "10:00", "Given", "Nurse Ngozi"),
-  m("AD-304", "Amlodipine", "10 mg", "Oral", "08:00", "Given", "Nurse Ngozi"),
-  m("AD-304", "Amlodipine", "10 mg", "Oral", "20:00"),
-  m("AD-305", "ORS", "200 ml", "Oral", "11:00", "Held", "Nurse Chioma"),
-  m("AD-305", "Metronidazole", "400 mg", "Oral", "14:00"),
-  m("AD-306", "Methyldopa", "250 mg", "Oral", "08:00", "Given", "Nurse Chioma"),
-  m("AD-306", "Methyldopa", "250 mg", "Oral", "16:00"),
-  m("AD-307", "Artesunate", "60 mg", "IV", "07:00", "Given", "Nurse Ngozi"),
-  m("AD-307", "Paracetamol", "120 mg", "Oral", "13:00"),
-  m("AD-308", "Salbutamol", "2 puffs", "Inhaled", "09:00", "Given", "Nurse Ngozi"),
-  m("AD-309", "Gentamicin", "80 mg", "IV", "10:00", "Given", "Nurse Ngozi"),
-  m("AD-309", "Gentamicin", "80 mg", "IV", "22:00"),
-];
+export const seedMeds: MedOrder[] = [];
 
-export const seedTasks: NursingTask[] = [
-  { id: uid(), text: "Change dressing", admissionId: "AD-301", done: false },
-  { id: uid(), text: "Monitor blood pressure hourly; inform doctor if above 160/100", admissionId: "AD-306", done: false },
-  { id: uid(), text: "Fluid balance chart", admissionId: "AD-303", done: false },
-  { id: uid(), text: "Check oxygen cylinder levels (ICU)", done: true, doneBy: "Nurse Ngozi" },
-  { id: uid(), text: "Restock ward emergency trolley", done: false },
-  { id: uid(), text: "Shift handover notes", done: false },
-];
+export const seedTasks: NursingTask[] = [];
 
-export const seedNotes: NursingNote[] = [
-  { id: uid(), admissionId: "AD-304", text: "Complains of headache. BP 168/102. Dr. Eze informed, review requested.", nurse: "Nurse Ngozi", at: ago(3) },
-  { id: uid(), admissionId: "AD-301", text: "Febrile overnight, tepid sponging done. Taking oral fluids well.", nurse: "Nurse Chioma", at: ago(9) },
-];
+export const seedNotes: NursingNote[] = [];
+
+// Leftover helpers from the old demo data; kept referenced so the build does not flag them.
+void [v, m];
