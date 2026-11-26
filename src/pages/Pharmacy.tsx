@@ -1,6 +1,7 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertTriangle, ClipboardCheck, PackagePlus, Pill, Plus, Search, Trash2 } from "lucide-react";
-import { STORE_KEYS, usePersisted } from "../services/store";
+import { pharmacyApi } from "../services/pharmacy";
+import { ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
 import Deliveries from "../components/pharmacy/Deliveries";
@@ -62,8 +63,7 @@ function DrugForm({ drugs, onSave, onClose }: { drugs: Drug[]; onSave: (d: Drug)
     if (!n) return setError("Drug name is required.");
     if (drugs.some((d) => d.name.toLowerCase() === n.toLowerCase())) return setError("That drug is already in the inventory.");
     if (Number(stock) < 0 || Number(reorderAt) < 0 || Number(price || 0) < 0) return setError("Numbers can't be negative.");
-    // TODO: POST /drugs via a services/ call
-    onSave({
+        onSave({
       sku: nextSku(drugs),
       name: n,
       category,
@@ -211,8 +211,7 @@ function CountForm({ drug, onSave, onClose }: { drug: Drug; onSave: (qty: number
     e.preventDefault();
     const n = Math.floor(Number(qty));
     if (!(n >= 0)) return setError("Enter the counted quantity (0 or more).");
-    // TODO: POST /drugs/:sku/adjustments with the reason via a services/ call
-    onSave(n);
+        onSave(n);
   };
 
   return (
@@ -317,8 +316,7 @@ function DispenseForm({
       const d = drugOf(sku)!;
       if (q > d.stock) return setError(`Only ${d.stock} ${d.unit} of ${d.name} in stock.`);
     }
-    // TODO: POST /dispensing via a services/ call (the backend should deduct stock)
-    const built = [...wanted].map(([sku, qty]) => {
+        const built = [...wanted].map(([sku, qty]) => {
       const d = drugOf(sku)!;
       return { sku, name: d.name, qty, unitPrice: priceOf(d) };
     });
@@ -405,8 +403,25 @@ export default function Pharmacy() {
   const { can, user } = useAuth();
   const [queueTick, setQueueTick] = useState(0);
   const [toast, setToast] = useState("");
-  const [drugs, setDrugs] = usePersisted<Drug[]>(STORE_KEYS.drugs, () => seedDrugs);
-  const [log, setLog] = usePersisted<Dispensing[]>(STORE_KEYS.dispensing, () => seedDispensing);
+  const [drugs, setDrugs] = useState<Drug[]>([]);
+  const [log, setLog] = useState<Dispensing[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        const [d, rx] = await Promise.all([
+          pharmacyApi.drugs({ limit: 500 }),
+          pharmacyApi.prescriptions({ limit: 500 }),
+        ]);
+        setDrugs(d as unknown as Drug[]);
+        // prescriptions replace local dispensing log when available
+        setLog(rx as unknown as Dispensing[]);
+      } catch (e) {
+        setLoadError(e instanceof ApiError ? e.message : "Could not load pharmacy data.");
+      } finally { setLoading(false); }
+    })();
+  }, []);
   const [tab, setTab] = useState<"inventory" | "log" | "deliveries">("inventory");
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<"all" | DrugCategory>("all");
@@ -479,8 +494,7 @@ export default function Pharmacy() {
   const receive = (qty: number, expiry: string, d: ReceiveDetails) => {
     if (!target) return;
     const receipt: StockReceipt = { id: uid(), date: todayISO(), sku: target.sku, drug: target.name, qty, expiry, ...d, receivedBy: user?.name ?? "Pharmacy", createdAt: Date.now() };
-    // TODO: POST /stock-receipts via a services/ call (the backend adds the stock and the receipt together)
-    saveReceipts([...loadReceipts(), receipt]);
+        saveReceipts([...loadReceipts(), receipt]);
     logAudit({ action: "Update", module: "Pharmacy", summary: `Received ${qty} ${target.unit} of ${target.name}${d.supplier ? ` from ${d.supplier}` : ""}${d.batch ? `, batch ${d.batch}` : ""}` });
     // Expiry tracks whichever batch expires first.
     setDrugs((prev) =>

@@ -1,7 +1,6 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
 import { CalendarCheck, ChevronLeft, ChevronRight, FileText, FolderOpen, HeartPulse, Pencil, Plus, Search, UserX, X } from "lucide-react";
-import { STORE_KEYS, usePersisted } from "../services/store";
 import { useAuth } from "../context/AuthContext";
 import ConsultationNote from "../components/patients/ConsultationNote";
 import TriageForm from "../components/patients/TriageForm";
@@ -13,7 +12,6 @@ import { loadPatients, type Patient } from "../types/patients";
 import Modal from "../components/billing/Modal";
 import { addDaysISO, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
-import { addCharges, priceOfService } from "../services/charges";
 import { DOCTORS } from "../types/admissions";
 import {
   SLOTS,
@@ -22,13 +20,13 @@ import {
   fmtTime,
   isActive,
   isBooked,
-  nextAppointmentId,
   nowHHmm,
-  seedAppointments,
   type Appointment,
   type AppointmentStatus,
   type VisitType,
 } from "../types/appointments";
+import { appointmentsApi } from "../services/appointment";
+import { ApiError } from "../services/api";
 
 const statusStyle: Record<AppointmentStatus, string> = {
   Scheduled: "bg-blue-50 text-blue-700",
@@ -92,9 +90,8 @@ function AppointmentForm({
     if (!time) return setError("No free slots for this doctor on that day. Pick another date or doctor.");
     if (isBooked(appointments, doctor, date, time, appointment?.id)) return setError("That slot has just been taken.");
 
-    // TODO: POST/PUT /appointments via a services/ call
     onSave({
-      id: appointment?.id ?? nextAppointmentId(appointments),
+      id: appointment?.id ?? "",
       patientId: patient.id,
       patient: patient.name,
       phone: phone.trim() || undefined,
@@ -190,13 +187,39 @@ export default function Appointments() {
   const [noteTick, setNoteTick] = useState(0);
   const [flash, setFlash] = useState("");
   const today = todayISO();
-  const [appointments, setAppointments] = usePersisted<Appointment[]>(STORE_KEYS.appointments, () => seedAppointments);
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
   const [scope, setScope] = useState<"day" | "upcoming" | "all">("day");
   const [date, setDate] = useState(today);
   const [doctorFilter, setDoctorFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState<"all" | AppointmentStatus>("all");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState<"book" | string | null>(null); // "book" or an appointment id
+
+  const reload = async () => {
+    setLoadError("");
+    try {
+      const filters =
+        scope === "day"
+          ? { date, limit: 500 }
+          : scope === "upcoming"
+            ? { from: today, limit: 500 }
+            : { newestFirst: true as const, limit: 500 };
+      const list = await appointmentsApi.list(filters);
+      setAppointments(list);
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : "Could not load appointments.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scope, date]);
 
   // Consultation fees come from the Price List.
   const fees = useMemo(() => {
@@ -235,19 +258,13 @@ export default function Appointments() {
     window.setTimeout(() => setFlash(""), 4500);
   };
 
-  const setStatus = (id: string, status: AppointmentStatus) => {
-    // TODO: PUT /appointments/:id/status via a services/ call
-    setAppointments((prev) => prev.map((a) => (a.id === id ? { ...a, status } : a)));
-    const appt = appointments.find((a) => a.id === id);
-    if (status === "Completed" && appt && appt.status !== "Completed") {
-      // A completed visit is billed automatically at the Price List fee.
-      const priceName = VISIT_TYPES.find((v) => v.name === appt.type)?.priceName ?? "";
-      const fee = priceOfService(priceName);
-      const person = loadPatients().find((p) => p.id === appt.patientId);
-      if (fee && person) {
-        const r = addCharges(person, `appt:${appt.id}`, [{ description: priceName, qty: 1, unitPrice: fee }], `${appt.type} visit ${appt.id}`);
-        if (r) say(`${formatNaira(r.amount)} charged to invoice ${r.invoiceNumber}.`);
-      } else if (!fee) say(`No Price List fee for "${appt.type}". Add it in Billing manually.`);
+  const setStatus = async (id: string, status: AppointmentStatus) => {
+    try {
+      const { appointment } = await appointmentsApi.setStatus(id, status);
+      setAppointments((prev) => prev.map((a) => (a.id === id ? appointment : a)));
+      say(`Marked ${status}.`);
+    } catch (e) {
+      say(e instanceof ApiError ? e.message : "Could not update status.");
     }
   };
 
@@ -255,10 +272,34 @@ export default function Appointments() {
     if (window.confirm(`Cancel ${a.patient}'s appointment on ${a.date} at ${fmtTime(a.time)}?`)) setStatus(a.id, "Cancelled");
   };
 
-  const save = (a: Appointment) => {
-    setAppointments((prev) => (prev.some((x) => x.id === a.id) ? prev.map((x) => (x.id === a.id ? a : x)) : [...prev, a]));
-    setModal(null);
-    if (scope === "day") setDate(a.date); // jump to the day just booked
+  const save = async (a: Appointment) => {
+    try {
+      if (appointments.some((x) => x.id === a.id)) {
+        const { appointment } = await appointmentsApi.update(a.id, {
+          doctor: a.doctor,
+          date: a.date,
+          time: a.time,
+          type: a.type,
+          reason: a.reason,
+        });
+        setAppointments((prev) => prev.map((x) => (x.id === a.id ? appointment : x)));
+      } else {
+        const { appointment } = await appointmentsApi.create({
+          patientId: a.patientId,
+          doctor: a.doctor,
+          date: a.date,
+          time: a.time,
+          type: a.type,
+          reason: a.reason,
+        });
+        setAppointments((prev) => [...prev, appointment]);
+      }
+      setModal(null);
+      if (scope === "day") setDate(a.date);
+      say("Appointment saved.");
+    } catch (e) {
+      say(e instanceof ApiError ? e.message : "Could not save appointment.");
+    }
   };
 
   const nowTime = nowHHmm();
@@ -279,6 +320,8 @@ export default function Appointments() {
   }, [noteTick]); // eslint-disable-line react-hooks/exhaustive-deps
   const triageTarget = triageFor ? appointments.find((a) => a.id === triageFor) : undefined;
   const noteTarget = noteFor ? appointments.find((a) => a.id === noteFor) : undefined;
+
+  if (loading) return <div className="p-8 text-sm text-slate-500">Loading appointments…</div>;
 
   return (
     <div className="space-y-6">

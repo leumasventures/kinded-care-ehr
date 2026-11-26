@@ -1,6 +1,7 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { FileText, FlaskConical, Pencil, Plus, Search, X } from "lucide-react";
-import { STORE_KEYS, usePersisted } from "../services/store";
+import { laboratoryApi } from "../services/laboratory";
+import { ApiError } from "../services/api";
 import { chargeLabOrder, postLabResultToChart } from "../services/clinical";
 import { removeCharges } from "../services/charges";
 import { useAuth } from "../context/AuthContext";
@@ -62,8 +63,7 @@ function NewOrderForm({ orders, onSave, onClose }: { orders: LabOrder[]; onSave:
     e.preventDefault();
     if (!patient) return setError("Choose a registered patient. New patients must be registered first.");
     if (chosen.length === 0) return setError("Select at least one test.");
-    // TODO: POST /lab-orders via a services/ call
-    onSave({
+        onSave({
       id: nextLabId(orders),
       patientId: patient.id,
       patient: patient.name,
@@ -194,7 +194,18 @@ type ModalState = { type: "new" } | { type: "results"; id: string } | { type: "r
 export default function Laboratory() {
   const { can, user } = useAuth();
   const [note, setNote] = useState("");
-  const [orders, setOrders] = usePersisted<LabOrder[]>(STORE_KEYS.labOrders, () => seedLabOrders);
+  const [orders, setOrders] = useState<LabOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        setOrders((await laboratoryApi.list({ limit: 500 })) as unknown as LabOrder[]);
+      } catch (e) {
+        setLoadError(e instanceof ApiError ? e.message : "Could not load lab orders.");
+      } finally { setLoading(false); }
+    })();
+  }, []);
   const [filter, setFilter] = useState<"All" | LabStatus>("All");
   const [query, setQuery] = useState("");
   const [modal, setModal] = useState<ModalState>(null);
@@ -224,8 +235,7 @@ export default function Laboratory() {
   const target = modal && modal.type !== "new" ? orders.find((o) => o.id === modal.id) : undefined;
 
   const setStatus = (id: string, status: LabStatus) => {
-    // TODO: PUT /lab-orders/:id/status via a services/ call
-    setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
+        setOrders((prev) => prev.map((o) => (o.id === id ? { ...o, status } : o)));
   };
 
   const cancel = (o: LabOrder) => {

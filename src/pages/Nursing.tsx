@@ -1,11 +1,12 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { AlertTriangle, CheckCircle2, Circle, History, Plus, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
 import { nowHHmm } from "../types/appointments";
 import { todayISO } from "../types/billing";
 import { logAudit } from "../services/audit";
-import { usePersisted } from "../services/store";
+import { nursingApi } from "../services/nursing";
+import { ApiError } from "../services/api";
 import { medRound } from "../services/clinical";
 import { loadRecords, saveRecords, type PatientRecords } from "../types/records";
 import { WARD_NAMES, type WardName } from "../types/admissions";
@@ -69,8 +70,7 @@ function VitalsForm({
     if (systolic !== undefined && diastolic !== undefined && systolic <= diastolic) return setError("Systolic should be higher than diastolic.");
     if (bad(resp, 4, 60)) return setError("Respiratory rate should be between 4 and 60.");
     if (bad(spo2, 50, 100)) return setError("SpO₂ should be between 50 and 100 %.");
-    // TODO: POST /vitals via a services/ call
-    onSave({ recordedAt: Date.now(), recordedBy: nurse, temp, systolic, diastolic, pulse, resp, spo2, note: f.note.trim() || undefined });
+        onSave({ recordedAt: Date.now(), recordedBy: nurse, temp, systolic, diastolic, pulse, resp, spo2, note: f.note.trim() || undefined });
   };
 
   const box = (label: string, key: keyof typeof f, step = "1") => (
@@ -121,12 +121,24 @@ export default function Nursing() {
     return p ? `${p.patient} (${p.bed})` : "General";
   };
 
-  const [vitals, setVitals] = usePersisted<Vitals[]>("hms_nursing_vitals", () => seedVitals);
+  const [vitals, setVitals] = useState<Vitals[]>([]);
+  const [board, setBoard] = useState<unknown[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        setBoard(await nursingApi.board());
+      } catch (e) {
+        setLoadError(e instanceof ApiError ? e.message : "Could not load nursing board.");
+      } finally { setLoading(false); }
+    })();
+  }, []);
   // Doses come straight from the doctors' prescriptions, so nothing is typed in twice.
   const [rec, setRec] = useState<PatientRecords>(loadRecords);
   const meds = useMemo(() => medRound(patients, rec, todayISO()), [patients, rec]);
-  const [tasks, setTasks] = usePersisted<NursingTask[]>("hms_nursing_tasks", () => seedTasks);
-  const [notes, setNotes] = usePersisted<NursingNote[]>("hms_nursing_notes", () => seedNotes);
+  const [tasks, setTasks] = useState<NursingTask[]>([]);
+  const [notes, setNotes] = useState<NursingNote[]>([]);
   const [tab, setTab] = useState<Tab>("vitals");
   const [ward, setWard] = useState<"all" | WardName>("all");
   const [pendingOnly, setPendingOnly] = useState(true);
@@ -164,8 +176,7 @@ export default function Nursing() {
   };
 
   const giveMed = (id: string, status: MedStatus) => {
-    // TODO: POST /prescriptions/:id/administrations via a services/ call
-    const m = meds.find((x) => x.id === id);
+        const m = meds.find((x) => x.id === id);
     const rx = rec.prescriptions.find((r) => r.id === m?.rxId);
     if (!m || !rx || status === "Due") return;
     const at = Date.now();

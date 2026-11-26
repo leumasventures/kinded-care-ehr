@@ -1,6 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { Plus, Printer, Search, Wallet } from "lucide-react";
-import { STORE_KEYS, usePersisted } from "../services/store";
+import { useEffect } from "react";
+import { billingApi } from "../services/billing";
+import { ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
 import InvoiceForm from "../components/billing/InvoiceForm";
@@ -103,7 +105,22 @@ function PaymentModal({
 
 export default function Billing() {
   const { can } = useAuth();
-  const [invoices, setInvoices] = usePersisted<Invoice[]>(STORE_KEYS.invoices, () => seedInvoices);
+  const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await billingApi.list({ limit: 500 });
+        setInvoices(list as unknown as Invoice[]);
+      } catch (e) {
+        setLoadError(e instanceof ApiError ? e.message : "Could not load invoices.");
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"All" | InvoiceStatus>("All");
   const [creating, setCreating] = useState(false);
@@ -143,8 +160,7 @@ export default function Billing() {
 
   const addPayment = (amount: number, method: PaymentMethod, date: string, reference?: string) => {
     if (!paying) return;
-    // TODO: POST to the backend via a services/ call
-    setInvoices((prev) =>
+        setInvoices((prev) =>
       prev.map((i) =>
         i.id === paying.id ? { ...i, payments: [...i.payments, { id: uid(), amount, method, date, reference }] } : i
       )

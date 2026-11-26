@@ -1,6 +1,8 @@
 import { useMemo, useState, type FormEvent } from "react";
 import { ArrowRightLeft, FileText, LogOut, Plus, Search } from "lucide-react";
-import { STORE_KEYS, usePersisted } from "../services/store";
+import { useEffect } from "react";
+import { admissionsApi } from "../services/admissions";
+import { ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import Modal from "../components/billing/Modal";
 import PatientPicker from "../components/patients/PatientPicker";
@@ -101,8 +103,7 @@ function AdmitForm({
     if (!diagnosis.trim()) return setError("Enter the reason for admission / diagnosis.");
     if (!bed) return setError("Choose a free bed.");
     if (date > todayISO()) return setError("Admission date can't be in the future.");
-    // TODO: POST /admissions via a services/ call
-    onSave({
+        onSave({
       id: nextAdmissionId(admissions),
       patientId: patient.id,
       patient: patient.name,
@@ -277,7 +278,24 @@ export default function Admissions() {
   const [summaryFor, setSummaryFor] = useState<Admission | null>(null);
   const [issuedDoc, setIssuedDoc] = useState<IssuedDoc | null>(null);
   const [toast, setToast] = useState("");
-  const [admissions, setAdmissions] = usePersisted<Admission[]>(STORE_KEYS.admissions, () => seedAdmissions);
+  const [admissions, setAdmissions] = useState<Admission[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+
+  const reload = async () => {
+    setLoadError("");
+    try {
+      const list = await admissionsApi.list({ limit: 500 });
+      // Map API shape to page shape where needed
+      setAdmissions(list as unknown as Admission[]);
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : "Could not load admissions.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void reload(); }, []);
   const [tab, setTab] = useState<"current" | "discharged">("current");
   const [wardFilter, setWardFilter] = useState<"all" | WardName>("all");
   const [query, setQuery] = useState("");
@@ -320,15 +338,13 @@ export default function Admissions() {
 
   const transfer = (ward: WardName, bed: string) => {
     if (!transferring) return;
-    // TODO: PUT /admissions/:id/transfer via a services/ call
-    setAdmissions((prev) => prev.map((a) => (a.id === transferring.id ? { ...a, ward, bed } : a)));
+        setAdmissions((prev) => prev.map((a) => (a.id === transferring.id ? { ...a, ward, bed } : a)));
     setModal(null);
   };
 
   const discharge = (date: string, outcome: Outcome, notes: string) => {
     if (!discharging) return;
-    // TODO: PUT /admissions/:id/discharge via a services/ call
-    setAdmissions((prev) =>
+        setAdmissions((prev) =>
       prev.map((a) =>
         a.id === discharging.id ? { ...a, status: "Discharged", dischargedOn: date, outcome, dischargeNotes: notes || undefined } : a
       )

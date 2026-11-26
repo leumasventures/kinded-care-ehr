@@ -38,5 +38,7 @@ export const appointmentsApi = {
   create: (data: AppointmentInput) => api.post<{ appointment: Appointment }>("/appointments", data),
   /** Only a Scheduled or Checked-in appointment can be changed. The patient can't be changed: cancel and book again. */
   update: (id: string, data: Partial<Omit<AppointmentInput, "patientId">>) => api.put<{ appointment: Appointment }>(`/appointments/${id}`, data),
-  setStatus: (id: string, status: AppointmentStatus) => api.put<{ appointment: Appointment }>(`/appointments/${id}/status`, { status }),
+  setStatus: (id: string, status: AppointmentStatus) =>
+    api.post<{ appointment: Appointment }>(`/appointments/${id}/status`, { status }),
+  remove: (id: string) => api.del<{ ok: boolean }>(`/appointments/${id}`),
 };

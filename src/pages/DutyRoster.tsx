@@ -25,6 +25,8 @@ import {
 } from "../types/roster";
 import ShiftForm, { type StaffMember } from "../components/roster/ShiftForm";
 import RosterPrint from "../components/roster/RosterPrint";
+import { dutyRosterApi } from "../services/dutyRoster";
+import { ApiError } from "../services/api";
 
 type Tab = "today" | "week" | "mine";
 const TABS: { id: Tab; label: string }[] = [
@@ -54,7 +56,19 @@ function Chip({ entry, onClick, compact = false }: { entry: RosterEntry; onClick
 
 export default function DutyRoster() {
   const { user, can } = useAuth();
-  const [entries, setEntries] = useState<RosterEntry[]>(loadRoster);
+  const [entries, setEntries] = useState<RosterEntry[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        const list = await dutyRosterApi.list({ limit: 500 });
+        setEntries(list as unknown as RosterEntry[]);
+      } catch (e) {
+        setLoadError(e instanceof ApiError ? e.message : "Could not load roster.");
+      } finally { setLoading(false); }
+    })();
+  }, []);
   const [tab, setTab] = useState<Tab>("today");
   const [week, setWeek] = useState(weekStart(todayISO()));
   const [unit, setUnit] = useState("all");

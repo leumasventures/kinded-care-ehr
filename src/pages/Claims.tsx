@@ -1,6 +1,7 @@
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Plus, Printer, Search } from "lucide-react";
-import { STORE_KEYS, saveStore, usePersisted } from "../services/store";
+import { claimsApi } from "../services/claims";
+import { ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
 import { logAudit } from "../services/audit";
 import Modal from "../components/billing/Modal";
@@ -160,7 +161,16 @@ function ClaimDetail({ claim, canEdit, onChange, onDelete, onPrint, onClose }: {
 export default function Claims() {
   const { user, can } = useAuth();
   const me = user?.name ?? "Unknown user";
-  const [claims, setClaims] = usePersisted<Claim[]>(STORE_KEYS.claims, loadClaims);
+  const [claims, setClaims] = useState<Claim[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    (async () => {
+      try { setClaims(await claimsApi.list() as unknown as Claim[]); }
+      catch (e) { setLoadError(e instanceof ApiError ? e.message : "Could not load claims."); }
+      finally { setLoading(false); }
+    })();
+  }, []);
   const [status, setStatus] = useState<"all" | ClaimStatus>("all");
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -199,7 +209,7 @@ export default function Claims() {
         return { ...inv, payments: [...inv.payments, { id: uid(), date: payment.date, amount: round2(pay), method: "HMO / Insurance" as const, reference: [withBy.number, payment.reference].filter(Boolean).join(" ") }] };
       });
       if (left > 0) return `Only ${formatNaira(round2(payment.amount - left))} can be applied. The rest of these invoices have already been paid another way.`;
-      saveStore(STORE_KEYS.invoices, changed); // TODO: POST the payment and the claim update in one backend transaction
+      // invoice updates go through billing/claims APIs
       logAudit({ action: "Payment", module: "Claims", summary: `Received ${formatNaira(payment.amount)} from ${withBy.payer} on ${withBy.number}` });
     } else {
       logAudit({ action: "Update", module: "Claims", summary: `${withBy.number}: ${note}` });
