@@ -1,3 +1,5 @@
+import { readPriceListCache } from "../services/priceList";
+
 export const CATEGORIES = [
   "Consultation",
   "Laboratory",
@@ -58,8 +60,14 @@ export const defaultPriceList: PriceItem[] = [
 
 const STORAGE_KEY = "hms_price_list";
 
-// Browser storage only, until the backend exists.
-export function loadPriceList(): PriceItem[] {
+/**
+ * The hospital price list, as this tab last loaded it from the database (AppLayout loads it before any page is shown).
+ * Pages that have not been moved over yet use this. New code should use usePriceList() or priceListApi from services/priceList.ts.
+ */
+export const loadPriceList: () => PriceItem[] = readPriceListCache;
+
+/** Prices typed into THIS browser before the price list moved to the database. Only the Price List page uses this, to offer moving them. */
+export function loadBrowserPriceList(): PriceItem[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -80,6 +88,7 @@ export function savePriceList(list: PriceItem[]) {
   }
 }
 
+/** Clears the browser copy (after it has been moved to the database). */
 export function resetPriceList() {
   try {
     localStorage.removeItem(STORAGE_KEY);

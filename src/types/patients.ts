@@ -1,3 +1,5 @@
+import { readPatientCache, rememberPatients } from "../services/patients";
+
 export const BLOOD_GROUPS = ["A+", "A-", "B+", "B-", "AB+", "AB-", "O+", "O-", "Unknown"] as const;
 export const GENOTYPES = ["AA", "AS", "SS", "AC", "SC", "Unknown"] as const;
 export const PAYERS = ["Self-pay", "NHIA / NHIS", "HMO", "Corporate"] as const;
@@ -83,27 +85,16 @@ const p = (
 // Mock seed data. Replace with a services/ call when the backend is ready.
 export const seedPatients: Patient[] = [];
 
-// ---- Hospital patient register (browser localStorage) ----
-// One shared register: every module picks patients from here, so a person must be registered before they are attended to.
-// TODO: replace with services/ calls (GET/POST/PUT/DELETE /patients) once the backend is ready.
-const KEY = "hms_patients";
+// ---- Patients this tab has loaded from the database ----
+// The register itself now lives in the hospital database (services/patients.ts). Pages that have not been moved over yet still
+// call loadPatients() to look someone up by id without waiting, so it returns the patients this browser tab has loaded from the
+// server (the patient list, the patient picker, an opened record). It is cleared when the tab closes or the person signs out.
+// A patient this tab has not loaded is not found, so those pages must be moved to services/patients.ts (usePatient / patientsApi).
+export const loadPatients: () => Patient[] = readPatientCache;
 
-export function loadPatients(): Patient[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    if (Array.isArray(raw)) return raw as Patient[];
-  } catch {
-    /* ignore */
-  }
-  return seedPatients;
-}
-
+/** Kept so the old merge code still compiles; it only adds to the tab's remembered patients. Nothing is saved in the browser. */
 export function savePatients(list: Patient[]) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* storage unavailable: changes last until refresh */
-  }
+  rememberPatients(list);
 }
 
 /** Finds likely duplicates before a new patient is registered (same phone, or same name and date of birth). */

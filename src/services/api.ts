@@ -75,9 +75,16 @@ function keep(t: Tokens) {
   accessToken = t.accessToken;
   writeRt(t.refreshToken);
 }
+
+const clearListeners: Array<() => void> = [];
+/** Lets other modules drop anything they hold in memory or session storage when the sign-in ends. */
+export const onSessionCleared = (fn: () => void) => {
+  clearListeners.push(fn);
+};
 export function clearSession() {
   accessToken = "";
   writeRt(null);
+  clearListeners.forEach((fn) => fn());
 }
 
 async function send(method: string, path: string, body: unknown, token: string): Promise<{ status: number; data: Record<string, unknown> }> {

@@ -4,9 +4,10 @@ import { AlertTriangle } from "lucide-react";
 import Modal from "../billing/Modal";
 import { useAuth } from "../../context/AuthContext";
 import { logAudit } from "../../services/audit";
-import { ageLabel, allergyList, loadPatients } from "../../types/patients";
+import { ageLabel, allergyList } from "../../types/patients";
+import { usePatient } from "../../services/patients";
+import { usePriceList } from "../../services/priceList";
 import { FREQUENCIES, RX_ROUTES, allergyMatch, canPrescribe, fmtDateTime, loadRecords, saveRecords, uid, type ClinicalNote, type Prescription } from "../../types/records";
-import { loadPriceList } from "../../types/pricing";
 import { loadDrugs } from "../../types/pharmacy";
 import { loadLabOrders, nextLabId, type LabOrder, type Priority } from "../../types/laboratory";
 import { STORE_KEYS, saveStore } from "../../services/store";
@@ -59,7 +60,7 @@ export default function ConsultationNote({
   const { user, can } = useAuth();
   const me = user?.name ?? "Unknown user";
   const myRole = user?.roleName ?? "";
-  const patient = useMemo(() => loadPatients().find((p) => p.id === appointment.patientId), [appointment.patientId]);
+  const { patient, loading: patientLoading, error: patientError } = usePatient(appointment.patientId);
   const earlier = useMemo(
     () => loadRecords().notes.filter((n) => n.patientId === appointment.patientId && n.appointmentId === appointment.id && !n.addendumTo),
     [appointment.patientId, appointment.id]
@@ -67,7 +68,8 @@ export default function ConsultationNote({
 
   const [v, setV] = useState<Record<Key, string>>({ complaint: appointment.reason ?? "", history: "", exam: "", diagnosis: "", plan: "" });
   const triage = useMemo(() => latestTriage(loadTriage(), appointment.id), [appointment.id]);
-  const catalog = useMemo(() => loadPriceList().filter((p) => p.category === "Laboratory"), []);
+  const priceList = usePriceList();
+  const catalog = useMemo(() => priceList.items.filter((p) => p.category === "Laboratory"), [priceList.items]);
   const drugNames = useMemo(() => loadDrugs().map((d) => d.name).sort(), []);
   const mayOrderLabs = can("Laboratory", "create");
   const mayPrescribe = canPrescribe(user);
@@ -83,7 +85,7 @@ export default function ConsultationNote({
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (!patient) return setError("This patient is no longer on the register.");
+    if (!patient) return setError(patientLoading ? "Still loading the patient. Try again in a moment." : patientError || "This patient is no longer on the register.");
     if (!v.diagnosis.trim() && !v.exam.trim() && !v.complaint.trim()) return setError("Write at least the complaint, findings or diagnosis.");
     const rxFilled = rxRows.filter((r) => r.drug.trim());
     if (rxFilled.some((r) => !r.dose.trim())) return setError("Every drug needs a dose.");
@@ -194,6 +196,7 @@ export default function ConsultationNote({
         {mayOrderLabs && (
           <fieldset className="space-y-2 rounded-lg border border-slate-200 p-4">
             <legend className="px-1 text-sm font-semibold text-slate-700">Order lab tests</legend>
+            {priceList.error && <p role="alert" className="text-xs text-rose-600">Couldn't load the test list: {priceList.error}</p>}
             <div className="flex flex-wrap items-center gap-3">
               <input className={`${inputClass} max-w-xs`} value={labFilter} onChange={(e) => setLabFilter(e.target.value)} placeholder="Search tests" aria-label="Search lab tests" />
               <select className={`${inputClass} w-auto`} value={priority} onChange={(e) => setPriority(e.target.value as Priority)} aria-label="Priority">

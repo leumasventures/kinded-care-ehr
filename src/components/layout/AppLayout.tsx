@@ -2,16 +2,31 @@ import { useEffect, useState } from "react";
 import { Outlet, useLocation } from "react-router-dom";
 import Sidebar, { navItems } from "./Sidebar";
 import { logAudit } from "../../services/audit";
+import { priceListApi } from "../../services/priceList";
 import Header from "./Header";
 import { EmergencyBanner } from "./EmergencyAccess";
 
 // Pages whose records are already stored in the hospital database. Every other page still keeps its records in this browser
-// only, and says so, until it is moved over.
-const ON_DATABASE = ["/admin"];
+// only, and says so, until it is moved over. (Check "/price-list" against the Price List path in App.tsx.)
+const ON_DATABASE = ["/admin", "/patients", "/price-list"];
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [ready, setReady] = useState(false);
   const { pathname } = useLocation();
+
+  // Pages not yet moved to the database read the price list synchronously, so it is loaded once, before any page is shown.
+  // If the server can't be reached the pages open anyway, with whatever list this tab already had.
+  useEffect(() => {
+    let alive = true;
+    priceListApi
+      .list()
+      .catch(() => undefined)
+      .finally(() => alive && setReady(true));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // Record which areas of the system people open.
   useEffect(() => {
@@ -34,7 +49,7 @@ export default function AppLayout() {
               Not connected to the database yet: records on this page are saved in this browser only, and are not shared with other staff or backed up. Staff accounts, roles and the audit log are already stored in the database.
             </p>
           )}
-          <Outlet />
+          {ready ? <Outlet /> : <p className="text-sm text-slate-500">Loading…</p>}
         </main>
       </div>
     </div>

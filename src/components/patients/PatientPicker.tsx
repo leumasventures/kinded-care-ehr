@@ -1,14 +1,17 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AlertTriangle, Search, UserPlus, X } from "lucide-react";
-import { ageLabel, allergyList, loadPatients, type Patient } from "../../types/patients";
+import { ageLabel, allergyList, type Patient } from "../../types/patients";
+import { patientsApi } from "../../services/patients";
 
 const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
+const MAX_RESULTS = 8;
+
 /**
- * Searchable list of registered patients. Staff can only choose someone already on the register,
- * so nobody is billed, booked, admitted or treated without a patient file.
+ * Searchable list of registered patients, searched in the hospital database as you type. Staff can only choose someone already
+ * on the register, so nobody is billed, booked, admitted or treated without a patient file.
  */
 export default function PatientPicker({
   value,
@@ -29,24 +32,37 @@ export default function PatientPicker({
   /** Hide this patient id from the results (e.g. when merging, so a record can't be picked against itself). */
   exclude?: string;
 }) {
-  const patients = useMemo(() => loadPatients(), []);
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
+  const [results, setResults] = useState<Patient[]>([]);
+  const [status, setStatus] = useState<"idle" | "loading" | "ready" | "error">("idle");
   const box = useRef<HTMLDivElement>(null);
   const listId = useId();
 
-  const q = query.trim().toLowerCase();
-  const digits = q.replace(/\D/g, "");
-  const results = useMemo(
-    () =>
-      patients
-        .filter((p) => p.id !== exclude)
-        .filter((p) => !q || p.name.toLowerCase().includes(q) || p.id.toLowerCase().includes(q) || (digits.length >= 3 && p.phone.replace(/\D/g, "").includes(digits)))
-        .sort((a, b) => a.name.localeCompare(b.name))
-        .slice(0, 8),
-    [patients, q, digits, exclude]
-  );
+  // Ask the server whenever the list is open and the text changes. An empty box shows the first few patients A to Z.
+  useEffect(() => {
+    if (!open) return;
+    let stale = false;
+    setStatus("loading");
+    const timer = window.setTimeout(
+      () => {
+        patientsApi
+          .list({ search: query.trim(), limit: MAX_RESULTS + 1 }) // one extra, in case the excluded patient is among them
+          .then((r) => {
+            if (stale) return;
+            setResults(r.patients.filter((p) => p.id !== exclude).slice(0, MAX_RESULTS));
+            setStatus("ready");
+          })
+          .catch(() => !stale && setStatus("error"));
+      },
+      query ? 250 : 0
+    );
+    return () => {
+      stale = true;
+      window.clearTimeout(timer);
+    };
+  }, [open, query, exclude]);
 
   useEffect(() => {
     const close = (e: MouseEvent) => {
@@ -141,7 +157,13 @@ export default function PatientPicker({
                   </button>
                 </li>
               ))}
-              {results.length === 0 && (
+              {status === "loading" && results.length === 0 && <li className="px-3 py-3 text-slate-500">Searching…</li>}
+              {status === "error" && (
+                <li role="alert" className="px-3 py-3 text-rose-600">
+                  Couldn't search the patient register. Check your connection and try again.
+                </li>
+              )}
+              {status === "ready" && results.length === 0 && (
                 <li className="space-y-2 px-3 py-3 text-slate-500">
                   <p>No registered patient matches "{query}".</p>
                   <Link to="/patients" className="inline-flex items-center gap-1.5 font-medium text-blue-600 hover:underline"><UserPlus size={14} /> Register the patient first</Link>
