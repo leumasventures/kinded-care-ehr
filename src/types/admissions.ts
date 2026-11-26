@@ -11,7 +11,8 @@ export type WardName = (typeof WARDS)[number]["name"];
 
 export const WARD_NAMES = WARDS.map((w) => w.name) as WardName[];
 
-export const DOCTORS = ["Dr. Eze", "Dr. Obi", "Dr. Ade", "Dr. Nwankwo"];
+/** @deprecated Use doctorsApi.list() / doctorNames() — no hardcoded demo doctors. */
+export const DOCTORS: string[] = [];
 
 export const OUTCOMES = ["Recovered / improved", "Referred to another facility", "Discharged against medical advice", "Deceased"] as const;
 export type Outcome = (typeof OUTCOMES)[number];

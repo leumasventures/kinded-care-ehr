@@ -11,7 +11,7 @@ import type { Patient } from "../types/patients";
 import LabReportPrint from "../components/lab/LabReportPrint";
 import { formatDate, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
-import { DOCTORS } from "../types/admissions";
+import { useDoctors } from "../hooks/useDoctors";
 import {
   FLAGS,
   LAB_STATUSES,
@@ -46,7 +46,8 @@ const inputClass =
 function NewOrderForm({ orders, onSave, onClose }: { orders: LabOrder[]; onSave: (o: LabOrder) => void; onClose: () => void }) {
   const catalog = useMemo(() => (loadPriceList() ?? []).filter((p) => p.category === "Laboratory"), []);
   const [patient, setPatient] = useState<Patient | null>(null);
-  const [requestedBy, setRequestedBy] = useState(DOCTORS[0]);
+  const { names } = useDoctors();
+  const [requestedBy, setRequestedBy] = useState("");
   const [priority, setPriority] = useState<Priority>("Routine");
   const [note, setNote] = useState("");
   const [filter, setFilter] = useState("");
@@ -86,8 +87,8 @@ function NewOrderForm({ orders, onSave, onClose }: { orders: LabOrder[]; onSave:
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Requested by</span>
             <select className={inputClass} value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)}>
-              {DOCTORS.map((d) => (
-                <option key={d}>{d}</option>
+              {names.length === 0 ? <option value="">No doctors registered</option> : names.map((d) => (
+                <option key={d} value={d}>{d}</option>
               ))}
             </select>
           </label>

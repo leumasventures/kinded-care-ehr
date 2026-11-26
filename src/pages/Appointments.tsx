@@ -13,7 +13,6 @@ import { readPatientCache } from "../services/patients";
 import Modal from "../components/billing/Modal";
 import { addDaysISO, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
-import { DOCTORS } from "../types/admissions";
 import {
   SLOTS,
   STATUSES,
@@ -28,6 +27,7 @@ import {
 } from "../types/appointments";
 import { appointmentsApi } from "../services/appointment";
 import { ApiError } from "../services/api";
+import { useDoctors } from "../hooks/useDoctors";
 
 const statusStyle: Record<AppointmentStatus, string> = {
   Scheduled: "bg-blue-50 text-blue-700",
@@ -69,7 +69,8 @@ function AppointmentForm({
   const today = todayISO();
   const [patient, setPatient] = useState<Patient | null>(() => readPatientCache().find((p) => p.id === appointment?.patientId) ?? null);
   const [phone, setPhone] = useState(appointment?.phone ?? "");
-  const [doctor, setDoctor] = useState(appointment?.doctor ?? DOCTORS[0]);
+  const { names } = useDoctors();
+  const [doctor, setDoctor] = useState(appointment?.doctor ?? "");
   const [date, setDate] = useState(appointment?.date ?? (presetDate < today ? today : presetDate));
   const [chosenTime, setChosenTime] = useState(appointment?.time ?? "");
   const [type, setType] = useState<VisitType>(appointment?.type ?? VISIT_TYPES[0].name);
@@ -119,8 +120,8 @@ function AppointmentForm({
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Doctor</span>
             <select className={inputClass} value={doctor} onChange={(e) => setDoctor(e.target.value)}>
-              {DOCTORS.map((d) => (
-                <option key={d}>{d}</option>
+              {names.length === 0 ? <option value="">No doctors registered</option> : names.map((d) => (
+                <option key={d} value={d}>{d}</option>
               ))}
             </select>
           </label>
@@ -180,6 +181,7 @@ function AppointmentForm({
 }
 
 export default function Appointments() {
+  const { names } = useDoctors();
   const { can } = useAuth();
   const canNote = can("Patients", "create"); // doctors write consultation notes into the patient chart
   const canTriage = can("Nursing", "create") || can("Appointments", "edit");
@@ -406,9 +408,9 @@ export default function Appointments() {
           </div>
           <select value={doctorFilter} onChange={(e) => setDoctorFilter(e.target.value)} aria-label="Filter by doctor" className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm">
             <option value="all">All doctors</option>
-            {DOCTORS.map((d) => (
-              <option key={d}>{d}</option>
-            ))}
+            {names.length === 0 ? <option value="">No doctors registered</option> : names.map((d) => (
+                <option key={d} value={d}>{d}</option>
+              ))}
           </select>
           <select
             value={statusFilter}

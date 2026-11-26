@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { admissionsApi } from "../services/admissions";
 import { ApiError } from "../services/api";
 import { useAuth } from "../context/AuthContext";
+import { useDoctors } from "../hooks/useDoctors";
 import Modal from "../components/billing/Modal";
 import PatientPicker from "../components/patients/PatientPicker";
 import DocumentForm from "../components/documents/DocumentForm";
@@ -17,7 +18,6 @@ import { addCharges } from "../services/charges";
 import { formatDate, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
 import {
-  DOCTORS,
   OUTCOMES,
   WARDS,
   WARD_NAMES,
@@ -89,7 +89,8 @@ function AdmitForm({
   const [patient, setPatient] = useState<Patient | null>(null);
   const [ward, setWard] = useState<WardName>(presetWard ?? WARD_NAMES[0]);
   const [chosenBed, setChosenBed] = useState(presetBed ?? "");
-  const [doctor, setDoctor] = useState(DOCTORS[0]);
+  const { names } = useDoctors();
+  const [doctor, setDoctor] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [date, setDate] = useState(todayISO());
   const [error, setError] = useState("");
@@ -137,8 +138,8 @@ function AdmitForm({
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Doctor</span>
             <select className={inputClass} value={doctor} onChange={(e) => setDoctor(e.target.value)}>
-              {DOCTORS.map((d) => (
-                <option key={d}>{d}</option>
+              {names.length === 0 ? <option value="">No doctors registered</option> : names.map((d) => (
+                <option key={d} value={d}>{d}</option>
               ))}
             </select>
           </label>

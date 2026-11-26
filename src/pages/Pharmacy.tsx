@@ -14,7 +14,7 @@ import { addCharges } from "../services/charges";
 import { addDaysISO, formatDate, formatNaira, todayISO, uid } from "../types/billing";
 import { logAudit } from "../services/audit";
 import { loadPriceList } from "../types/pricing";
-import { DOCTORS } from "../types/admissions";
+import { useDoctors } from "../hooks/useDoctors";
 import {
   DRUG_CATEGORIES,
   isExpired,
@@ -282,7 +282,8 @@ function DispenseForm({
 }) {
   const available = drugs.filter((d) => d.stock > 0 && !isExpired(d)).sort((a, b) => a.name.localeCompare(b.name));
   const [patient, setPatient] = useState<Patient | null>(preset?.patient ?? null);
-  const [prescriber, setPrescriber] = useState(preset && (DOCTORS as readonly string[]).includes(preset.prescriber) ? preset.prescriber : DOCTORS[0]);
+  const { names } = useDoctors();
+  const [prescriber, setPrescriber] = useState(preset?.prescriber ?? "");
   const matched = (preset?.lines ?? []).map((l) => ({
     ...l,
     drug: available.find((d) => d.name.toLowerCase().includes(l.drug.toLowerCase()) || l.drug.toLowerCase().includes(d.name.toLowerCase())),
@@ -347,8 +348,8 @@ function DispenseForm({
           <label className="block text-sm">
             <span className="mb-1 block text-slate-600">Prescribed by</span>
             <select className={inputClass} value={prescriber} onChange={(e) => setPrescriber(e.target.value)}>
-              {DOCTORS.map((d) => (
-                <option key={d}>{d}</option>
+              {names.length === 0 ? <option value="">No doctors registered</option> : names.map((d) => (
+                <option key={d} value={d}>{d}</option>
               ))}
             </select>
           </label>
