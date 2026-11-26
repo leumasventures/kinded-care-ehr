@@ -55,9 +55,12 @@ export interface PrescribeInput {
   notes?: string;
 }
 
-function qs(params: Record<string, string | number | undefined>) {
+function qs(params: Record<string, string | number | boolean | undefined>) {
   const p = new URLSearchParams();
-  for (const [k, v] of Object.entries(params)) if (v !== undefined && v !== "") p.set(k, String(v));
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined || v === "") continue;
+    p.set(k, typeof v === "boolean" ? (v ? "1" : "0") : String(v));
+  }
   const s = p.toString();
   return s ? `?${s}` : "";
 }
