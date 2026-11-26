@@ -305,8 +305,8 @@ export default function Appointments() {
 
   const nowTime = nowHHmm();
   // Visits that already have a consultation note (re-read after each save).
-  const noted = useMemo(() => new Set(loadRecords().notes.filter((n) => n.appointmentId).map((n) => n.appointmentId)), [noteTick]); // eslint-disable-line react-hooks/exhaustive-deps
-  const triaged = useMemo(() => new Set(loadTriage().map((t) => t.appointmentId)), [noteTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const noted = useMemo(() => new Set((loadRecords()?.notes ?? []).filter((n) => n.appointmentId).map((n) => n.appointmentId)), [noteTick]); // eslint-disable-line react-hooks/exhaustive-deps
+  const triaged = useMemo(() => new Set((loadTriage() ?? []).map((t) => t.appointmentId)), [noteTick]); // eslint-disable-line react-hooks/exhaustive-deps
   // Lab orders raised from each visit, so the doctor can see when results are back.
   const labsByVisit = useMemo(() => {
     const m = new Map<string, { open: number; ready: number }>();

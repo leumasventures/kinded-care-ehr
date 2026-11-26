@@ -4,17 +4,25 @@ import { AlertTriangle, BedDouble, CalendarDays, FlaskConical, Pill, Receipt, Us
 import { useAuth } from "../context/AuthContext";
 import type { Module } from "../types/access";
 import { formatNaira } from "../types/billing";
-import { fmtTime } from "../types/appointments";
+import { fmtTime, type Appointment } from "../types/appointments";
 import { dashboardApi, type DashboardFinance, type DashboardOverview } from "../services/dashboard";
 import { appointmentsApi } from "../services/appointment";
-import type { Appointment } from "../types/appointments";
 import { ApiError } from "../services/api";
 
 type Icon = ComponentType<{ size?: number }>;
-
 const num = (n: number) => n.toLocaleString("en-NG");
 
-function Card({ title, link, children, className = "" }: { title: string; link?: { to: string; label: string } | null; children: ReactNode; className?: string }) {
+function Card({
+  title,
+  link,
+  children,
+  className = "",
+}: {
+  title: string;
+  link?: { to: string; label: string } | null;
+  children: ReactNode;
+  className?: string;
+}) {
   return (
     <section className={`rounded-xl border border-slate-200 bg-white ${className}`}>
       <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
@@ -44,21 +52,32 @@ export default function Dashboard() {
       setLoading(true);
       setError("");
       try {
-        const [ov, appts] = await Promise.all([
-          dashboardApi.overview(),
-          can("Appointments", "view")
-            ? appointmentsApi.list({ date: new Date().toISOString().slice(0, 10), limit: 50 })
-            : Promise.resolve([] as Appointment[]),
-        ]);
+        const ov = await dashboardApi.overview();
         if (cancelled) return;
         setOverview(ov);
-        setTodays(appts.filter((a) => a.status !== "Cancelled" && a.status !== "No-show"));
+
+        try {
+          const appts = (await appointmentsApi.list({
+            date: new Date().toISOString().slice(0, 10),
+            limit: 50,
+          })) ?? [];
+          if (!cancelled) {
+            setTodays(
+              (Array.isArray(appts) ? appts : []).filter(
+                (a) => a && a.status !== "Cancelled" && a.status !== "No-show"
+              )
+            );
+          }
+        } catch {
+          if (!cancelled) setTodays([]);
+        }
+
         if (can("Billing", "view")) {
           try {
             const fin = await dashboardApi.money();
             if (!cancelled) setFinance(fin);
           } catch {
-            /* money is optional for non-billing roles */
+            /* optional */
           }
         }
       } catch (e) {
@@ -76,24 +95,44 @@ export default function Dashboard() {
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
   const firstName = user?.name?.split(" ")[0];
 
-  if (loading) {
-    return <div className="p-8 text-sm text-slate-500">Loading dashboard…</div>;
-  }
+  if (loading) return <div className="p-8 text-sm text-slate-500">Loading dashboard…</div>;
   if (error) {
-    return <div className="m-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{error}</div>;
+    return (
+      <div className="m-6 rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
+        {error}
+      </div>
+    );
   }
   if (!overview) return null;
 
-  const remaining = todays.filter((a) => a.status === "Scheduled" || a.status === "Checked in");
-  const completedToday = todays.filter((a) => a.status === "Completed").length;
-  const labOpen = overview.laboratory.waitingCollection + overview.laboratory.waitingResults;
-  const dutyTotal = Object.values(overview.onDutyToday).reduce((s, n) => s + n, 0);
+  const list = Array.isArray(todays) ? todays : [];
+  const remaining = list.filter((a) => a.status === "Scheduled" || a.status === "Checked in");
+  const completedToday = list.filter((a) => a.status === "Completed").length;
+  const labOpen =
+    (overview.laboratory?.waitingCollection ?? 0) + (overview.laboratory?.waitingResults ?? 0);
+  const dutyTotal = Object.values(overview.onDutyToday ?? {}).reduce((s, n) => s + n, 0);
 
-  const stats: { label: string; value: string; sub: string; icon: Icon; color: string; module: Module; to: string }[] = [
-    { label: "Total Patients", value: num(overview.patients), sub: "Registered", icon: Users, color: "bg-blue-50 text-blue-600", module: "Patients", to: "/patients" },
+  const stats: {
+    label: string;
+    value: string;
+    sub: string;
+    icon: Icon;
+    color: string;
+    module: Module;
+    to: string;
+  }[] = [
+    {
+      label: "Total Patients",
+      value: num(overview.patients ?? 0),
+      sub: "Registered",
+      icon: Users,
+      color: "bg-blue-50 text-blue-600",
+      module: "Patients",
+      to: "/patients",
+    },
     {
       label: "Today's Appointments",
-      value: num(overview.appointmentsToday.total),
+      value: num(overview.appointmentsToday?.total ?? 0),
       sub: `${remaining.length} still to come · ${completedToday} completed`,
       icon: CalendarDays,
       color: "bg-emerald-50 text-emerald-600",
@@ -102,19 +141,24 @@ export default function Dashboard() {
     },
     {
       label: "Admitted Patients",
-      value: num(overview.admitted.total),
-      sub: overview.admitted.byWard.map((w) => `${w.ward}: ${w.occupied}`).join(" · ") || "No wards",
+      value: num(overview.admitted?.total ?? 0),
+      sub:
+        (overview.admitted?.byWard ?? []).map((w) => `${w.ward}: ${w.occupied}`).join(" · ") ||
+        "No wards",
       icon: BedDouble,
       color: "bg-amber-50 text-amber-600",
       module: "Admissions",
       to: "/admissions",
     },
   ];
+
   if (finance) {
     stats.push({
       label: "Pending Bills",
-      value: formatNaira(finance.outstanding.amount),
-      sub: `${finance.outstanding.overdueInvoices} overdue (${formatNaira(finance.outstanding.overdueAmount)})`,
+      value: formatNaira(finance.outstanding?.amount ?? 0),
+      sub: `${finance.outstanding?.overdueInvoices ?? 0} overdue (${formatNaira(
+        finance.outstanding?.overdueAmount ?? 0
+      )})`,
       icon: Receipt,
       color: "bg-rose-50 text-rose-600",
       module: "Billing",
@@ -123,23 +167,37 @@ export default function Dashboard() {
   }
 
   const alerts: { text: string; to: string; module: Module }[] = [];
-  if (finance && finance.outstanding.overdueInvoices > 0) {
+  if (finance && (finance.outstanding?.overdueInvoices ?? 0) > 0) {
     alerts.push({
-      text: `${finance.outstanding.overdueInvoices} overdue invoice(s) totalling ${formatNaira(finance.outstanding.overdueAmount)}`,
+      text: `${finance.outstanding.overdueInvoices} overdue invoice(s) totalling ${formatNaira(
+        finance.outstanding.overdueAmount ?? 0
+      )}`,
       to: "/billing",
       module: "Billing",
     });
   }
-  if (overview.laboratory.criticalToReview > 0) {
-    alerts.push({ text: `${overview.laboratory.criticalToReview} critical lab result(s) to review`, to: "/laboratory", module: "Laboratory" });
+  if ((overview.laboratory?.criticalToReview ?? 0) > 0) {
+    alerts.push({
+      text: `${overview.laboratory.criticalToReview} critical lab result(s) to review`,
+      to: "/laboratory",
+      module: "Laboratory",
+    });
   } else if (labOpen > 0) {
     alerts.push({ text: `${labOpen} open lab order(s)`, to: "/laboratory", module: "Laboratory" });
   }
-  if (overview.pharmacy.lowStockDrugs > 0) {
-    alerts.push({ text: `${overview.pharmacy.lowStockDrugs} drug(s) low or out of stock`, to: "/pharmacy", module: "Pharmacy" });
+  if ((overview.pharmacy?.lowStockDrugs ?? 0) > 0) {
+    alerts.push({
+      text: `${overview.pharmacy.lowStockDrugs} drug(s) low or out of stock`,
+      to: "/pharmacy",
+      module: "Pharmacy",
+    });
   }
-  if (overview.pharmacy.pendingPrescriptions > 0) {
-    alerts.push({ text: `${overview.pharmacy.pendingPrescriptions} prescription(s) pending dispense`, to: "/pharmacy", module: "Pharmacy" });
+  if ((overview.pharmacy?.pendingPrescriptions ?? 0) > 0) {
+    alerts.push({
+      text: `${overview.pharmacy.pendingPrescriptions} prescription(s) pending dispense`,
+      to: "/pharmacy",
+      module: "Pharmacy",
+    });
   }
   const visibleAlerts = alerts.filter((a) => can(a.module, "view"));
 
@@ -172,7 +230,11 @@ export default function Dashboard() {
         {stats
           .filter((s) => can(s.module, "view"))
           .map((s) => (
-            <Link key={s.label} to={s.to} className="rounded-xl border border-slate-200 bg-white p-5 hover:border-slate-300">
+            <Link
+              key={s.label}
+              to={s.to}
+              className="rounded-xl border border-slate-200 bg-white p-5 hover:border-slate-300"
+            >
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm text-slate-500">{s.label}</p>
@@ -189,9 +251,13 @@ export default function Dashboard() {
 
       <div className="grid gap-6 lg:grid-cols-3">
         {can("Appointments", "view") && (
-          <Card title={remaining.length > 0 ? "Upcoming Appointments Today" : "Today's Appointments"} link={{ to: "/appointments", label: "View all" }} className="lg:col-span-2">
+          <Card
+            title={remaining.length > 0 ? "Upcoming Appointments Today" : "Today's Appointments"}
+            link={{ to: "/appointments", label: "View all" }}
+            className="lg:col-span-2"
+          >
             <ul className="divide-y divide-slate-100">
-              {(remaining.length ? remaining : todays).slice(0, 6).map((a) => (
+              {(remaining.length ? remaining : list).slice(0, 6).map((a) => (
                 <li key={a.id} className="flex items-center gap-4 px-5 py-3">
                   <span className="w-16 text-sm font-medium text-blue-600">{fmtTime(a.time)}</span>
                   <div className="min-w-0 flex-1">
@@ -202,7 +268,9 @@ export default function Dashboard() {
                   <span className="hidden w-20 text-right text-xs text-slate-500 sm:block">{a.status}</span>
                 </li>
               ))}
-              {todays.length === 0 && <li className="px-5 py-8 text-center text-sm text-slate-400">No appointments today.</li>}
+              {list.length === 0 && (
+                <li className="px-5 py-8 text-center text-sm text-slate-400">No appointments today.</li>
+              )}
             </ul>
           </Card>
         )}
@@ -210,15 +278,17 @@ export default function Dashboard() {
         {can("Admissions", "view") && (
           <Card title="Ward occupancy" link={{ to: "/admissions", label: "Admissions" }}>
             <div className="space-y-3 p-5">
-              {overview.admitted.byWard.length === 0 && <p className="text-sm text-slate-400">No admitted patients.</p>}
-              {overview.admitted.byWard.map((w) => (
+              {(overview.admitted?.byWard ?? []).length === 0 && (
+                <p className="text-sm text-slate-400">No admitted patients.</p>
+              )}
+              {(overview.admitted?.byWard ?? []).map((w) => (
                 <div key={w.ward} className="flex justify-between text-sm">
                   <span className="text-slate-700">{w.ward}</span>
                   <span className="font-medium text-slate-900">{w.occupied} occupied</span>
                 </div>
               ))}
               <p className="border-t border-slate-100 pt-3 text-xs text-slate-500">
-                {overview.admitted.total} admitted · {dutyTotal} on duty today
+                {overview.admitted?.total ?? 0} admitted · {dutyTotal} on duty today
               </p>
             </div>
           </Card>
@@ -232,7 +302,7 @@ export default function Dashboard() {
               <FlaskConical size={20} className="text-violet-600" />
               <div className="text-sm">
                 <p className="font-medium text-slate-800">{labOpen} open orders</p>
-                <p className="text-slate-500">{overview.laboratory.resultsToReview} to review</p>
+                <p className="text-slate-500">{overview.laboratory?.resultsToReview ?? 0} to review</p>
               </div>
             </div>
           </Card>
@@ -242,8 +312,10 @@ export default function Dashboard() {
             <div className="flex items-center gap-3 p-5">
               <Pill size={20} className="text-teal-600" />
               <div className="text-sm">
-                <p className="font-medium text-slate-800">{overview.pharmacy.pendingPrescriptions} pending Rx</p>
-                <p className="text-slate-500">{overview.pharmacy.lowStockDrugs} low stock</p>
+                <p className="font-medium text-slate-800">
+                  {overview.pharmacy?.pendingPrescriptions ?? 0} pending Rx
+                </p>
+                <p className="text-slate-500">{overview.pharmacy?.lowStockDrugs ?? 0} low stock</p>
               </div>
             </div>
           </Card>
@@ -251,8 +323,12 @@ export default function Dashboard() {
         {finance && can("Billing", "view") && (
           <Card title="Collected this month" link={{ to: "/billing", label: "Billing" }}>
             <div className="p-5">
-              <p className="text-2xl font-semibold text-slate-900">{formatNaira(finance.collectedThisMonth)}</p>
-              <p className="mt-1 text-xs text-slate-500">Today: {formatNaira(finance.collectedToday.total)}</p>
+              <p className="text-2xl font-semibold text-slate-900">
+                {formatNaira(finance.collectedThisMonth ?? 0)}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                Today: {formatNaira(finance.collectedToday?.total ?? 0)}
+              </p>
             </div>
           </Card>
         )}

@@ -44,7 +44,7 @@ const inputClass =
   "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 
 function NewOrderForm({ orders, onSave, onClose }: { orders: LabOrder[]; onSave: (o: LabOrder) => void; onClose: () => void }) {
-  const catalog = useMemo(() => loadPriceList().filter((p) => p.category === "Laboratory"), []);
+  const catalog = useMemo(() => (loadPriceList() ?? []).filter((p) => p.category === "Laboratory"), []);
   const [patient, setPatient] = useState<Patient | null>(null);
   const [requestedBy, setRequestedBy] = useState(DOCTORS[0]);
   const [priority, setPriority] = useState<Priority>("Routine");

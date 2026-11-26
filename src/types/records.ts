@@ -154,7 +154,7 @@ function seed(): PatientRecords {
 }
 
 export function loadRecords(): PatientRecords {
-  return { notes: [], medications: [], documents: [] } as any;
+  return { notes: [], prescriptions: [], administrations: [] };
 }
 
 export function saveRecords(_r: PatientRecords): void {

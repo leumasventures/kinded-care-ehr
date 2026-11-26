@@ -33,7 +33,7 @@ function queryString(f: AppointmentFilters) {
 }
 
 export const appointmentsApi = {
-  list: async (f: AppointmentFilters = {}) => (await api.get<{ appointments: Appointment[] }>(`/appointments${queryString(f)}`)).appointments,
+  list: async (f: AppointmentFilters = {}) => (await api.get<{ appointments: Appointment[] }>(`/appointments${queryString(f)}`)).appointments ?? [],
   /** Answers 409 with code "slot_taken" when the doctor is already booked at that time. */
   create: (data: AppointmentInput) => api.post<{ appointment: Appointment }>("/appointments", data),
   /** Only a Scheduled or Checked-in appointment can be changed. The patient can't be changed: cancel and book again. */

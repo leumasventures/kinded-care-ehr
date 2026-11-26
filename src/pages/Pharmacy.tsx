@@ -430,7 +430,7 @@ export default function Pharmacy() {
   const [modal, setModal] = useState<ModalState>(null);
 
   // Selling prices come from the Price List when the drug name matches.
-  const priceMap = useMemo(() => new Map(loadPriceList().map((p) => [p.name.toLowerCase(), p.price])), []);
+  const priceMap = useMemo(() => new Map((loadPriceList() ?? []).map((p) => [p.name.toLowerCase(), p.price])), []);
   const priceOf = (d: Drug) => priceMap.get(d.name.toLowerCase()) ?? d.price;
 
   const lowCount = drugs.filter((d) => isLow(d) || isOut(d)).length;
@@ -454,7 +454,7 @@ export default function Pharmacy() {
 
   // Prescriptions written by doctors in a consultation that nobody has dispensed yet.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const waiting = useMemo(() => loadRecords().prescriptions.filter((r) => r.toDispense && !r.dispensedAt && r.status === "Active"), [queueTick]);
+  const waiting = useMemo(() => (loadRecords()?.prescriptions ?? []).filter((r) => r.toDispense && !r.dispensedAt && r.status === "Active"), [queueTick]);
   const queue = useMemo(() => {
     const byPatient = new Map<string, Prescription[]>();
     waiting.forEach((r) => byPatient.set(r.patientId, [...(byPatient.get(r.patientId) ?? []), r]));

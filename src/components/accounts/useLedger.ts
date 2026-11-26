@@ -6,7 +6,15 @@ import { balanceOfAccount, billingTxns, loadAccounts, saveAccounts, type Account
 
 export function useLedger() {
   const { user, can } = useAuth();
-  const [data, setData] = useState<AccountsData>(loadAccounts);
+  const [data, setData] = useState<AccountsData>(() => {
+    const d = loadAccounts();
+    return {
+      accounts: d?.accounts ?? [],
+      txns: d?.txns ?? [],
+      employees: d?.employees ?? [],
+      runs: d?.runs ?? [],
+    };
+  });
 
   // Records every change to accounts, transactions and payroll for the audit log.
   const audit = (prev: AccountsData, next: AccountsData) => {
@@ -51,7 +59,7 @@ export function useLedger() {
   };
 
   // Patient payments are read from Billing and shown alongside manual entries.
-  const txns = useMemo<Txn[]>(() => [...billingTxns(), ...data.txns].sort((a, b) => b.date.localeCompare(a.date) || b.recordedAt - a.recordedAt), [data.txns]);
+  const txns = useMemo<Txn[]>(() => [...(billingTxns() ?? []), ...data.txns].sort((a, b) => b.date.localeCompare(a.date) || b.recordedAt - a.recordedAt), [data.txns]);
   const balances = useMemo(() => Object.fromEntries(data.accounts.map((a) => [a.id, balanceOfAccount(a, txns)])), [data.accounts, txns]);
   const accountName = (id?: string) => data.accounts.find((a) => a.id === id)?.name ?? "—";
 
