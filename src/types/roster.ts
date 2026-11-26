@@ -123,20 +123,10 @@ function seed(): RosterEntry[] {
   return [];
 }
 
-export function loadRoster(): RosterEntry[] {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    if (Array.isArray(raw)) return raw as RosterEntry[];
-  } catch {
-    /* ignore */
-  }
-  return seed();
+export function loadRoster(): any[] {
+  return []; // use dutyRosterApi
 }
 
-export function saveRoster(list: RosterEntry[]) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(list));
-  } catch {
-    /* storage unavailable: changes last until refresh */
-  }
+export function saveRoster(_list: any[]): void {
+  /* database only */
 }

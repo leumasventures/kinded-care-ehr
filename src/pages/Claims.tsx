@@ -8,7 +8,7 @@ import Modal from "../components/billing/Modal";
 import ClaimPrint from "../components/billing/ClaimPrint";
 import { balanceOf, formatDate, formatNaira, loadInvoices, todayISO, uid, type Invoice } from "../types/billing";
 import { CLAIM_STATUSES, claimOutstanding, claimTotal, claimableByPayer, loadClaims, nextClaimNumber, type Claim, type ClaimStatus } from "../types/claims";
-import { loadPatients } from "../types/patients";
+import { readPatientCache } from "../services/patients";
 
 const inputClass = "w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500";
 const badge: Record<ClaimStatus, string> = {
@@ -22,7 +22,7 @@ const round2 = (n: number) => Math.round(n * 100) / 100;
 const daysSince = (iso?: string) => (iso ? Math.max(0, Math.round((Date.parse(`${todayISO()}T00:00:00`) - Date.parse(`${iso}T00:00:00`)) / 86_400_000)) : 0);
 
 function NewClaim({ claims, onCreate, onClose }: { claims: Claim[]; onCreate: (c: { payer: string; type: string; ids: string[] }) => void; onClose: () => void }) {
-  const groups = useMemo(() => claimableByPayer(loadInvoices(), loadPatients(), claims), [claims]);
+  const groups = useMemo(() => claimableByPayer(loadInvoices(), readPatientCache(), claims), [claims]);
   const [payer, setPayer] = useState(groups[0]?.[0] ?? "");
   const group = groups.find(([name]) => name === payer);
   const [ids, setIds] = useState<string[] | null>(null);
@@ -182,10 +182,10 @@ export default function Claims() {
     .filter((c) => (status === "all" || c.status === status) && (!query.trim() || `${c.number} ${c.payer} ${c.reference ?? ""}`.toLowerCase().includes(query.trim().toLowerCase())))
     .sort((a, b) => b.createdAt - a.createdAt);
   const awaiting = claims.reduce((s, c) => s + claimOutstanding(c), 0);
-  const unclaimed = useMemo(() => claimableByPayer(loadInvoices(), loadPatients(), claims).reduce((s, [, g]) => s + g.rows.reduce((t, r) => t + r.balance, 0), 0), [claims]);
+  const unclaimed = useMemo(() => claimableByPayer(loadInvoices(), readPatientCache(), claims).reduce((s, [, g]) => s + g.rows.reduce((t, r) => t + r.balance, 0), 0), [claims]);
 
   const create = ({ payer, type, ids }: { payer: string; type: string; ids: string[] }) => {
-    const patients = loadPatients();
+    const patients = readPatientCache();
     const lines = loadInvoices().filter((i) => ids.includes(i.id)).map((i) => ({ invoiceId: i.id, number: i.number, patientId: i.patientId, patient: i.patient, memberId: patients.find((p) => p.id === i.patientId)?.memberId, amount: balanceOf(i) }));
     const claim: Claim = { id: uid(), number: nextClaimNumber(claims), payer, payerType: type, createdAt: Date.now(), createdBy: me, status: "Draft", lines, receivedAmount: 0, history: [] };
     setClaims((p) => [...p, claim]);

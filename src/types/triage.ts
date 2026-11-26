@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore, saveStore } from "../services/store";
 import { vitalFlags, type Vitals } from "./nursing";
 
 /** Vitals taken by a nurse at check-in, before the doctor sees the patient. One record per reading; the newest is used. */
@@ -21,8 +20,8 @@ export interface Triage {
 }
 
 // TODO: replace with services/ calls (POST /appointments/:id/triage, GET /appointments/:id/triage).
-export const loadTriage = (): Triage[] => loadStore<Triage[]>(STORE_KEYS.triage, () => []);
-export const saveTriage = (list: Triage[]) => saveStore(STORE_KEYS.triage, list);
+export const loadTriage = (): Triage[] => [];
+export const saveTriage = (_list: Triage[]) => {};
 
 export const latestTriage = (list: Triage[], appointmentId: string) =>
   list.filter((t) => t.appointmentId === appointmentId).sort((a, b) => b.at - a.at)[0];

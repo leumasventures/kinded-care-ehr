@@ -1,4 +1,4 @@
-import { HOSPITAL, HOSPITAL_DEFAULTS } from "./billing";
+import { HOSPITAL_DEFAULTS } from "./billing";
 
 export interface HospitalProfile {
   name: string;
@@ -15,7 +15,7 @@ export interface AppSettings {
     labResults: boolean;
     overdueInvoices: boolean;
   };
-  lowStockThreshold: number; // units
+  lowStockThreshold: number;
   invoiceDueDays: number;
   vatPercent: number;
   invoiceFooter: string;
@@ -34,42 +34,18 @@ export const DEFAULT_SETTINGS: AppSettings = {
   minPasswordLength: 8,
 };
 
-const KEY = "hms_settings";
-
-// TODO: replace localStorage with GET/PUT /settings via a services/ call
 export function loadSettings(): AppSettings {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    if (raw && typeof raw === "object") {
-      return {
-        ...DEFAULT_SETTINGS,
-        ...raw,
-        hospital: { ...DEFAULT_SETTINGS.hospital, ...raw.hospital },
-        notify: { ...DEFAULT_SETTINGS.notify, ...raw.notify },
-      };
-    }
-  } catch {
-    /* ignore */
-  }
-  return DEFAULT_SETTINGS;
+  return {
+    ...DEFAULT_SETTINGS,
+    hospital: { ...DEFAULT_SETTINGS.hospital },
+    notify: { ...DEFAULT_SETTINGS.notify },
+  };
 }
 
-export function saveSettings(s: AppSettings) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(s));
-    localStorage.setItem("hms_hospital", JSON.stringify(s.hospital));
-  } catch {
-    /* storage unavailable: changes last until refresh */
-  }
-  // Keep the live object used by printouts in step with what was just saved.
-  Object.assign(HOSPITAL, s.hospital);
+export function saveSettings(_s: AppSettings): void {
+  /* use settings API when wired */
 }
 
-export function clearSavedSettings() {
-  try {
-    localStorage.removeItem(KEY);
-    localStorage.removeItem("hms_hospital");
-  } catch {
-    /* ignore */
-  }
+export function clearSavedSettings(): void {
+  /* no browser settings store */
 }

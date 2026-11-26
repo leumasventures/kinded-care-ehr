@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore } from "../services/store";
 import { addDaysISO, todayISO } from "./billing";
 import { defaultPriceList } from "./pricing";
 
@@ -50,7 +49,7 @@ const day = (offset: number) => addDaysISO(todayISO(), offset);
 export const seedLabOrders: LabOrder[] = [];
 
 /** Live data (survives reloads). Pages read this instead of the demo seed. */
-export const loadLabOrders = (): LabOrder[] => loadStore(STORE_KEYS.labOrders, () => seedLabOrders);
+export const loadLabOrders = (): any[] => []; // database only — use services/* => seedLabOrders);
 
 // Leftover helpers from the old demo data; kept referenced so the build does not flag them.
 void [t, day];

@@ -1,7 +1,6 @@
 // Automatic charging: when a visit is completed, a lab test is ordered, drugs are dispensed or a patient is discharged,
 // the fee is added to the patient's open invoice (or a new one is started). Prices come from the Price List or the order itself.
 // TODO: this belongs on the backend, in the same transaction as the event that causes the charge.
-import { STORE_KEYS, saveStore } from "./store";
 import { logAudit } from "./audit";
 import { addDaysISO, balanceOf, calcTotals, formatNaira, loadInvoices, nextInvoiceNumber, paidTotal, todayISO, uid, type Invoice } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
@@ -69,7 +68,7 @@ export function addCharges(
     };
     next = [invoice, ...invoices];
   }
-  saveStore(STORE_KEYS.invoices, next);
+  /* invoices persist via billing API */
 
   const amount = calcTotals({ items, discount: 0, vatRate: 0 }).total;
   logAudit({
@@ -116,7 +115,7 @@ export function removeCharges(patientId: string, source: string, reason: string)
     if (trimmed.items.length > 0 || inv.payments.length > 0) next.push(trimmed); // an emptied, unpaid invoice is dropped
   }
   if (removed > 0) {
-    saveStore(STORE_KEYS.invoices, next);
+    /* invoices persist via billing API */
     logAudit({ action: "Update", module: "Billing", summary: `Took back ${formatNaira(amount)} (${removed} line${removed === 1 ? "" : "s"}) from invoice ${invoiceNumber}: ${reason}` });
   }
   return { removed, amount, blocked, invoiceNumber };

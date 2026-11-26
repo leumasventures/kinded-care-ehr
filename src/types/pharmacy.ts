@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore } from "../services/store";
 import { addDaysISO, todayISO } from "./billing";
 import { defaultPriceList } from "./pricing";
 
@@ -79,5 +78,5 @@ export const seedDrugs: Drug[] = [];
 export const seedDispensing: Dispensing[] = [];
 
 /** Live data (survives reloads). Pages read this instead of the demo seed. */
-export const loadDispensing = (): Dispensing[] => loadStore(STORE_KEYS.dispensing, () => seedDispensing);
-export const loadDrugs = (): Drug[] => loadStore(STORE_KEYS.drugs, () => seedDrugs);
+export const loadDispensing = (): any[] => []; // database only — use services/* => seedDispensing);
+export const loadDrugs = (): any[] => []; // database only — use services/* => seedDrugs);

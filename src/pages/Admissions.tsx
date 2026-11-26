@@ -10,7 +10,8 @@ import DocumentForm from "../components/documents/DocumentForm";
 import DocumentPrint from "../components/documents/DocumentPrint";
 import type { IssuedDoc } from "../types/documents";
 import { canPrescribe } from "../types/records";
-import { loadPatients, type Patient } from "../types/patients";
+import type { Patient } from "../types/patients";
+import { readPatientCache } from "../services/patients";
 import { addCharges } from "../services/charges";
 
 import { formatDate, formatNaira, todayISO } from "../types/billing";
@@ -351,7 +352,7 @@ export default function Admissions() {
     );
     // Bed-days are billed on discharge: days x the ward's daily rate from the Price List.
     const rate = rates[discharging.ward];
-    const person = loadPatients().find((p) => p.id === discharging.patientId);
+    const person = readPatientCache().find((p) => p.id === discharging.patientId);
     if (rate && person) {
       const days = stayDays({ ...discharging, dischargedOn: date });
       const r = addCharges(person, `adm:${discharging.id}`, [{ description: `${discharging.ward} bed, per day (${discharging.bed})`, qty: days, unitPrice: rate }], `${days} day stay, admission ${discharging.id}`);
@@ -576,9 +577,9 @@ export default function Admissions() {
         <AdmitForm admissions={admissions} presetWard={modal.ward} presetBed={modal.bed} onSave={admit} onClose={() => setModal(null)} />
       )}
       {transferring && <TransferForm admission={transferring} admissions={admissions} onSave={transfer} onClose={() => setModal(null)} />}
-      {summaryFor && loadPatients().find((p) => p.id === summaryFor.patientId) && (
+      {summaryFor && readPatientCache().find((p) => p.id === summaryFor.patientId) && (
         <DocumentForm
-          patient={loadPatients().find((p) => p.id === summaryFor.patientId)!}
+          patient={readPatientCache().find((p) => p.id === summaryFor.patientId)!}
           type="Discharge summary"
           admissionId={summaryFor.id}
           onClose={() => setSummaryFor(null)}

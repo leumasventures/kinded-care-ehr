@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore } from "../services/store";
 import { addDaysISO, todayISO } from "./billing";
 
 export const WARDS = [
@@ -62,4 +61,4 @@ const ago = (days: number) => addDaysISO(todayISO(), -days);
 export const seedAdmissions: Admission[] = [];
 
 /** Live data (survives reloads). Pages read this instead of the demo seed. */
-export const loadAdmissions = (): Admission[] => loadStore(STORE_KEYS.admissions, () => seedAdmissions);
+export const loadAdmissions = (): any[] => []; // database only — use services/* => seedAdmissions);

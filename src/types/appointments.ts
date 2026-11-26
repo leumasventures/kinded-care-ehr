@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore } from "../services/store";
 import { addDaysISO, todayISO } from "./billing";
 
 export const STATUSES = ["Scheduled", "Checked in", "In Progress", "Completed", "Cancelled", "No-show"] as const;
@@ -62,4 +61,4 @@ const day = (offset: number) => addDaysISO(todayISO(), offset);
 export const seedAppointments: Appointment[] = [];
 
 /** Live data (survives reloads). Pages read this instead of the demo seed. */
-export const loadAppointments = (): Appointment[] => loadStore(STORE_KEYS.appointments, () => seedAppointments);
+export const loadAppointments = (): any[] => []; // database only — use services/* => seedAppointments);

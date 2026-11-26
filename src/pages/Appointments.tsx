@@ -8,7 +8,8 @@ import { loadLabOrders } from "../types/laboratory";
 import { loadTriage } from "../types/triage";
 import { loadRecords } from "../types/records";
 import PatientPicker from "../components/patients/PatientPicker";
-import { loadPatients, type Patient } from "../types/patients";
+import type { Patient } from "../types/patients";
+import { readPatientCache } from "../services/patients";
 import Modal from "../components/billing/Modal";
 import { addDaysISO, formatNaira, todayISO } from "../types/billing";
 import { loadPriceList } from "../types/pricing";
@@ -66,7 +67,7 @@ function AppointmentForm({
   onClose: () => void;
 }) {
   const today = todayISO();
-  const [patient, setPatient] = useState<Patient | null>(() => loadPatients().find((p) => p.id === appointment?.patientId) ?? null);
+  const [patient, setPatient] = useState<Patient | null>(() => readPatientCache().find((p) => p.id === appointment?.patientId) ?? null);
   const [phone, setPhone] = useState(appointment?.phone ?? "");
   const [doctor, setDoctor] = useState(appointment?.doctor ?? DOCTORS[0]);
   const [date, setDate] = useState(appointment?.date ?? (presetDate < today ? today : presetDate));

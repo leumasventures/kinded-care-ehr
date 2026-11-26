@@ -7,7 +7,8 @@ import Modal from "../components/billing/Modal";
 import Deliveries from "../components/pharmacy/Deliveries";
 import { loadReceipts, loadSuppliers, saveReceipts, saveSuppliers, type StockReceipt } from "../types/suppliers";
 import PatientPicker from "../components/patients/PatientPicker";
-import { allergyList, loadPatients, type Patient } from "../types/patients";
+import { allergyList, type Patient } from "../types/patients";
+import { readPatientCache } from "../services/patients";
 import { loadRecords, saveRecords, type Prescription } from "../types/records";
 import { addCharges } from "../services/charges";
 import { addDaysISO, formatDate, formatNaira, todayISO, uid } from "../types/billing";
@@ -461,7 +462,7 @@ export default function Pharmacy() {
   }, [waiting]);
 
   const startQueued = (patientId: string, list: Prescription[]) => {
-    const person = loadPatients().find((p) => p.id === patientId);
+    const person = readPatientCache().find((p) => p.id === patientId);
     if (!person) return window.alert("This patient is no longer on the register.");
     setModal({
       type: "dispense",
@@ -476,7 +477,7 @@ export default function Pharmacy() {
     }));
     setLog((prev) => [r, ...prev]);
     // Charge the patient's invoice at the selling price.
-    const person = loadPatients().find((p) => p.id === r.patientId);
+    const person = readPatientCache().find((p) => p.id === r.patientId);
     const charged = person ? addCharges(person, `rx:${r.id}`, r.lines.map((l) => ({ description: l.name, qty: l.qty, unitPrice: l.unitPrice })), `drugs dispensed ${r.id}`) : null;
     // Close the prescriptions this fulfilled, so they leave the waiting list.
     if (r.rxIds?.length) {
@@ -561,7 +562,7 @@ export default function Pharmacy() {
             {queue.map(([pid, list]) => (
               <li key={pid} className="flex flex-wrap items-center justify-between gap-3 px-5 py-3 text-sm">
                 <div>
-                  <p className="font-medium text-slate-800">{loadPatients().find((p) => p.id === pid)?.name ?? pid} <span className="font-normal text-slate-500">· {list[0].prescribedBy}</span></p>
+                  <p className="font-medium text-slate-800">{readPatientCache().find((p) => p.id === pid)?.name ?? pid} <span className="font-normal text-slate-500">· {list[0].prescribedBy}</span></p>
                   <p className="text-xs text-slate-600">{list.map((r) => `${r.drug} ${r.dose} ${r.frequency}, ${r.duration}`).join(" · ")}</p>
                 </div>
                 {can("Pharmacy", "create") && <button onClick={() => startQueued(pid, list)} className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700">Dispense</button>}

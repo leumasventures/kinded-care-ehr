@@ -1,4 +1,4 @@
-import { addDaysISO, loadInvoices, todayISO, type PaymentMethod } from "./billing";
+import { todayISO, type PaymentMethod } from "./billing";
 
 // ---------- Money accounts (cash, bank, POS) ----------
 export const ACCOUNT_KINDS = ["Cash", "Bank", "POS / Mobile money"] as const;
@@ -10,7 +10,7 @@ export interface MoneyAccount {
   kind: AccountKind;
   bankName: string;
   accountNumber: string;
-  opening: number; // balance when you started recording here
+  opening: number;
   openingDate: string;
   active: boolean;
 }
@@ -39,15 +39,15 @@ export const EXPENSE_CATEGORIES = [
 
 export interface Txn {
   id: string;
-  date: string; // YYYY-MM-DD
+  date: string;
   type: TxnType;
   category: string;
   description: string;
-  party: string; // payer or payee
+  party: string;
   reference: string;
-  amount: number; // always positive
-  accountId: string; // income: paid into, expense: paid from, transfer: from
-  toAccountId?: string; // transfer only
+  amount: number;
+  accountId: string;
+  toAccountId?: string;
   source: TxnSource;
   recordedBy: string;
   recordedAt: number;
@@ -66,8 +66,8 @@ export interface Employee {
   housing: number;
   transport: number;
   otherAllowance: number;
-  pensionPct: number; // employee pension contribution, % of basic + housing + transport
-  paye: number; // monthly income tax, entered from your own tax computation
+  pensionPct: number;
+  paye: number;
   otherDeduction: number;
   active: boolean;
 }
@@ -77,7 +77,7 @@ export interface PayLine {
   name: string;
   title: string;
   basic: number;
-  allowances: number; // housing + transport + other
+  allowances: number;
   bonus: number;
   gross: number;
   pension: number;
@@ -88,7 +88,7 @@ export interface PayLine {
 
 export interface PayrollRun {
   id: string;
-  month: string; // YYYY-MM
+  month: string;
   lines: PayLine[];
   status: "Draft" | "Paid";
   paidOn?: string;
@@ -105,6 +105,13 @@ export interface AccountsData {
   employees: Employee[];
   runs: PayrollRun[];
 }
+
+export const emptyAccounts = (): AccountsData => ({
+  accounts: [],
+  txns: [],
+  employees: [],
+  runs: [],
+});
 
 // ---------- Helpers ----------
 export const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
@@ -126,7 +133,6 @@ export const lastMonths = (count: number, from = monthOf(todayISO())) => {
 
 export const isLive = (t: Txn) => !t.voided;
 
-/** Net effect of a transaction on one account. */
 export function effectOn(t: Txn, accountId: string): number {
   if (t.voided) return 0;
   if (t.type === "Income") return t.accountId === accountId ? t.amount : 0;
@@ -166,85 +172,20 @@ export const runTotals = (run: PayrollRun) => ({
   other: round2(run.lines.reduce((s, l) => s + l.other, 0)),
 });
 
-// ---------- Patient payments come from Billing ----------
-export const ACC_CASH = "acc-cash";
-export const ACC_BANK = "acc-bank";
-export const ACC_POS = "acc-pos";
-
-const methodAccount = (m: PaymentMethod) => (m === "Cash" ? ACC_CASH : m === "POS" ? ACC_POS : ACC_BANK);
-
-// TODO: replace with a services/ call that returns invoice payments from the backend.
 export function billingTxns(): Txn[] {
-  return loadInvoices().flatMap((inv) =>
-    inv.payments.map<Txn>((p) => ({
-      id: `bill-${inv.id}-${p.id}`,
-      date: p.date,
-      type: "Income",
-      category: p.method === "HMO / Insurance" ? "HMO / NHIA claims" : "Patient payments",
-      description: `Invoice ${inv.number}`,
-      party: inv.patient,
-      reference: p.reference ?? "",
-      amount: p.amount,
-      accountId: methodAccount(p.method),
-      source: "billing",
-      recordedBy: "Billing",
-      recordedAt: 0,
-    }))
-  );
-}
-
-// ---------- Mock store (browser localStorage) ----------
-// TODO: replace with services/ calls (/accounts, /transactions, /employees, /payroll).
-const KEY = "hms_accounts";
-
-const ago = (days: number) => addDaysISO(todayISO(), -days);
-
-const emp = (
-  n: number,
-  name: string,
-  title: string,
-  department: string,
-  basic: number,
-  housing: number,
-  transport: number,
-  paye: number,
-  bank = "Your bank",
-  other = 0
-): Employee => ({
-  id: `EMP-${String(n).padStart(3, "0")}`,
-  name,
-  title,
-  department,
-  bankName: bank,
-  accountNumber: "",
-  basic,
-  housing,
-  transport,
-  otherAllowance: other,
-  pensionPct: 8,
-  paye,
-  otherDeduction: 0,
-  active: true,
-});
-
-function seed(): AccountsData {
-  return { accounts: [], txns: [], employees: [], runs: [] };
+  return [];
 }
 
 export function loadAccounts(): AccountsData {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    if (raw && Array.isArray(raw.accounts) && Array.isArray(raw.txns) && Array.isArray(raw.employees) && Array.isArray(raw.runs)) return raw as AccountsData;
-  } catch {
-    /* ignore */
-  }
-  return seed();
+  return emptyAccounts();
 }
 
-export function saveAccounts(d: AccountsData) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(d));
-  } catch {
-    /* storage unavailable: changes last until refresh */
-  }
+export function saveAccounts(_d: AccountsData): void {
+  /* use accountsApi */
 }
+
+export function loadLedger(): null {
+  return null;
+}
+
+export function saveLedger(_d: unknown): void {}

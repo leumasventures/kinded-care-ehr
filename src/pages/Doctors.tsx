@@ -1,7 +1,9 @@
 import { useState, type FormEvent, type ReactNode } from "react";
 import { Eye, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
-import { STORE_KEYS, usePersisted } from "../services/store";
+import { useEffect } from "react";
+import { staffApi } from "../services/staff";
+import { ApiError } from "../services/api";
 import Modal from "../components/billing/Modal";
 import { formatDate, todayISO } from "../types/billing";
 import { SLOTS, fmtTime, isActive, nowHHmm, loadAppointments } from "../types/appointments";
@@ -12,7 +14,6 @@ import {
   SPECIALTIES,
   nextDoctorId,
   scheduleLabel,
-  seedDoctors,
   worksToday,
   type Doctor,
   type DoctorStatus,
@@ -56,8 +57,7 @@ function DoctorForm({ doctor, doctors, onSave, onClose }: { doctor: Doctor | nul
     if (doctors.some((d) => d.id !== doctor?.id && d.name.toLowerCase() === n.toLowerCase())) return setError("A doctor with that name already exists.");
     if (days.length === 0) return setError("Choose at least one working day.");
     if (end <= start) return setError("End time must be after the start time.");
-    // TODO: POST/PUT /doctors via a services/ call
-    onSave({ id: doctor?.id ?? nextDoctorId(doctors), name: n, specialty, phone: phone.trim(), email: email.trim(), days, start, end, status });
+        onSave({ id: doctor?.id ?? nextDoctorId(doctors), name: n, specialty, phone: phone.trim(), email: email.trim(), days, start, end, status });
   };
 
   return (
@@ -129,7 +129,30 @@ type ModalState = { type: "new" } | { type: "edit"; id: string } | { type: "view
 
 export default function Doctors() {
   const { can } = useAuth();
-  const [doctors, setDoctors] = usePersisted<Doctor[]>(STORE_KEYS.doctors, () => seedDoctors);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
+  useEffect(() => {
+    (async () => {
+      try {
+        const staff = await staffApi.directory();
+        // Map staff directory to Doctor shape (directory is source of truth; schedule fields default empty)
+        setDoctors(staff.map((s) => ({
+          id: s.id,
+          name: s.name,
+          specialty: "General Medicine",
+          phone: "",
+          email: "",
+          days: [1, 2, 3, 4, 5],
+          start: "08:00",
+          end: "16:00",
+          status: "Available" as const,
+        })));
+      } catch (e) {
+        setLoadError(e instanceof ApiError ? e.message : "Could not load doctors.");
+      } finally { setLoading(false); }
+    })();
+  }, []);
   const [query, setQuery] = useState("");
   const [specialty, setSpecialty] = useState("all");
   const [status, setStatus] = useState<"all" | DoctorStatus>("all");

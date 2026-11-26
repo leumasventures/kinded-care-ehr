@@ -65,6 +65,7 @@ function qs(params: Record<string, string | number | boolean | undefined>) {
   return s ? `?${s}` : "";
 }
 
+
 export const pharmacyApi = {
   drugs: async (f: { search?: string; lowStock?: boolean; limit?: number } = {}) =>
     (await api.get<{ drugs: Drug[] }>(`/pharmacy/drugs${qs(f)}`)).drugs,

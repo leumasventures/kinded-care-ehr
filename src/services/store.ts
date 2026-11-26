@@ -1,36 +1,18 @@
-// Browser-localStorage "mock backend" shared by every module.
-// TODO: replace loadStore/saveStore with services/ calls (GET/PUT per resource) once the backend is ready.
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+// Operational data lives in the hospital database only.
+import { useState, type Dispatch, type SetStateAction } from "react";
 
-export function loadStore<T>(key: string, seed: () => T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw !== null) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(seed()) ? Array.isArray(parsed) : parsed && typeof parsed === "object") return parsed as T;
-    }
-  } catch {
-    /* corrupt or unavailable: fall back to the seed */
-  }
+export function loadStore<T>(_key: string, seed: () => T): T {
   return seed();
 }
 
-export function saveStore<T>(key: string, value: T) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* storage unavailable: changes last until refresh */
-  }
+export function saveStore<T>(_key: string, _value: T) {
+  /* no-op */
 }
 
-/** useState that keeps its value in localStorage, so the page's data survives a reload and other pages can read it. */
-export function usePersisted<T>(key: string, seed: () => T): [T, Dispatch<SetStateAction<T>>] {
-  const [value, setValue] = useState<T>(() => loadStore(key, seed));
-  useEffect(() => saveStore(key, value), [key, value]);
-  return [value, setValue];
+export function usePersisted<T>(_key: string, seed: () => T): [T, Dispatch<SetStateAction<T>>] {
+  return useState<T>(seed);
 }
 
-/** Keys that hold operational data (everything except sign-in state). Used by backup and restore. */
 export const STORE_KEYS = {
   appointments: "hms_appointments",
   admissions: "hms_admissions",
@@ -38,11 +20,16 @@ export const STORE_KEYS = {
   dispensing: "hms_dispensing",
   drugs: "hms_drugs",
   invoices: "hms_invoices",
-  triage: "hms_triage",
-  doctors: "hms_doctors",
-  documents: "hms_documents",
-  patientMerges: "hms_patient_merges",
   claims: "hms_claims",
+  doctors: "hms_doctors",
+  roster: "hms_roster",
+  settings: "hms_settings",
+  accounts: "hms_accounts",
+  priceList: "hms_price_list",
+  patients: "hms_patients",
   suppliers: "hms_suppliers",
   stockReceipts: "hms_stock_receipts",
+  documents: "hms_documents",
+  triage: "hms_triage",
+  patientMerges: "hms_patient_merges",
 } as const;

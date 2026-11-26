@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore, saveStore } from "../services/store";
 import { addDaysISO } from "./billing";
 
 export const DOC_TYPES = ["Sick note", "Referral letter", "Prescription", "Discharge summary"] as const;
@@ -58,8 +57,8 @@ export interface IssuedDoc {
 }
 
 // TODO: replace with services/ calls (GET/POST /patients/:id/documents). The backend should assign the number.
-export const loadDocuments = (): IssuedDoc[] => loadStore<IssuedDoc[]>(STORE_KEYS.documents, () => []);
-export const saveDocuments = (list: IssuedDoc[]) => saveStore(STORE_KEYS.documents, list);
+export const loadDocuments = (): IssuedDoc[] => [];
+export const saveDocuments = (_list: IssuedDoc[]) => {};
 
 export function nextDocNumber(list: IssuedDoc[], type: DocType) {
   const max = list

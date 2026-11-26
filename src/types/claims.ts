@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore, saveStore } from "../services/store";
 import { balanceOf, type Invoice } from "./billing";
 import type { Patient } from "./patients";
 
@@ -39,8 +38,8 @@ export interface Claim {
 }
 
 // TODO: replace with services/ calls (GET/POST/PUT /claims). Payments should be posted to invoices in the same transaction.
-export const loadClaims = (): Claim[] => loadStore<Claim[]>(STORE_KEYS.claims, () => []);
-export const saveClaims = (list: Claim[]) => saveStore(STORE_KEYS.claims, list);
+export const loadClaims = (): Claim[] => []; // use claimsApi
+export const saveClaims = (_list: Claim[]) => {};
 
 export const claimTotal = (c: Claim) => Math.round(c.lines.reduce((s, l) => s + l.amount, 0) * 100) / 100;
 

@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore } from "../services/store";
 export type PaymentMethod = "Cash" | "Bank Transfer" | "POS" | "Cheque" | "HMO / Insurance";
 
 export const PAYMENT_METHODS: PaymentMethod[] = ["Cash", "Bank Transfer", "POS", "Cheque", "HMO / Insurance"];
@@ -49,7 +48,7 @@ export const HOSPITAL_DEFAULTS = { ...HOSPITAL };
 
 // The Settings page saves the hospital profile here; printouts read HOSPITAL, so they pick it up automatically.
 try {
-  const stored = JSON.parse(localStorage.getItem("hms_hospital") ?? "null");
+  const stored = null;
   if (stored && typeof stored === "object") {
     for (const k of ["name", "address", "phone", "email"] as const) {
       if (typeof stored[k] === "string" && stored[k].trim()) HOSPITAL[k] = stored[k];
@@ -125,4 +124,4 @@ export function nextInvoiceNumber(invoices: Invoice[]) {
 export const seedInvoices: Invoice[] = [];
 
 /** Live data (survives reloads). Pages read this instead of the demo seed. */
-export const loadInvoices = (): Invoice[] => loadStore(STORE_KEYS.invoices, () => seedInvoices);
+export const loadInvoices = (): any[] => []; // database only — use services/* => seedInvoices);

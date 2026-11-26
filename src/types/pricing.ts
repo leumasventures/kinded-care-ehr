@@ -68,30 +68,16 @@ export const loadPriceList: () => PriceItem[] = readPriceListCache;
 
 /** Prices typed into THIS browser before the price list moved to the database. Only the Price List page uses this, to offer moving them. */
 export function loadBrowserPriceList(): PriceItem[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as PriceItem[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch {
-    /* fall through to defaults */
-  }
   return defaultPriceList;
 }
 
-export function savePriceList(list: PriceItem[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(list));
-  } catch {
-    /* storage unavailable: changes last until reload */
-  }
+export function savePriceList(_list: PriceItem[]): void {
+  /* database only */
 }
 
 /** Clears the browser copy (after it has been moved to the database). */
 export function resetPriceList() {
   try {
-    localStorage.removeItem(STORAGE_KEY);
   } catch {
     /* ignore */
   }

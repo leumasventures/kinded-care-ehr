@@ -1,4 +1,3 @@
-import { STORE_KEYS, loadStore, saveStore } from "../services/store";
 
 export interface Supplier {
   id: string;
@@ -27,9 +26,12 @@ export interface StockReceipt {
 }
 
 // TODO: replace with services/ calls (GET/POST /suppliers, /stock-receipts). The backend should add the stock and the receipt together.
-export const loadSuppliers = (): Supplier[] => loadStore<Supplier[]>(STORE_KEYS.suppliers, () => []);
-export const saveSuppliers = (list: Supplier[]) => saveStore(STORE_KEYS.suppliers, list);
-export const loadReceipts = (): StockReceipt[] => loadStore<StockReceipt[]>(STORE_KEYS.stockReceipts, () => []);
-export const saveReceipts = (list: StockReceipt[]) => saveStore(STORE_KEYS.stockReceipts, list);
+export const loadSuppliers = (): Supplier[] => [];
+export const saveSuppliers_disabled = (_list: Supplier[]) => {};
+export const loadReceipts = (): StockReceipt[] => [];
+export const saveReceipts_disabled = (_list: StockReceipt[]) => {};
 
 export const receiptValue = (r: StockReceipt) => Math.round((r.unitCost ?? 0) * r.qty * 100) / 100;
+
+export const saveSuppliers = (_s: Supplier[]) => {};
+export const saveReceipts = (_r: StockReceipt[]) => {};

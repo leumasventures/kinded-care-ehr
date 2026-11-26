@@ -154,19 +154,9 @@ function seed(): PatientRecords {
 }
 
 export function loadRecords(): PatientRecords {
-  try {
-    const raw = JSON.parse(localStorage.getItem(KEY) ?? "null");
-    if (raw && Array.isArray(raw.notes) && Array.isArray(raw.prescriptions) && Array.isArray(raw.administrations)) return raw as PatientRecords;
-  } catch {
-    /* ignore */
-  }
-  return seed();
+  return { notes: [], medications: [], documents: [] } as any;
 }
 
-export function saveRecords(r: PatientRecords) {
-  try {
-    localStorage.setItem(KEY, JSON.stringify(r));
-  } catch {
-    /* storage unavailable: changes last until refresh */
-  }
+export function saveRecords(_r: PatientRecords): void {
+  /* clinical notes go through patients/clinical APIs */
 }

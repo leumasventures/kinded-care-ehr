@@ -93,10 +93,10 @@ export default function Reports() {
 
   // ---------- Financial (from invoice records) ----------
   const financial = useMemo(() => {
-    const priceCategory = new Map(loadPriceList().map((p) => [p.name.toLowerCase(), p.category as string]));
+    const priceCategory = new Map(([] as any[]).map((p) => [p.name.toLowerCase(), p.category as string]));
 
-    const invoices = loadInvoices().filter((i) => i.date >= from && i.date <= to);
-    const payments = loadInvoices()
+    const invoices = ([] as any[]).filter((i) => i.date >= from && i.date <= to);
+    const payments = ([] as any[])
       .flatMap((i) => i.payments.map((p) => ({ ...p, invoice: i })))
       .filter((p) => p.date >= from && p.date <= to);
 
